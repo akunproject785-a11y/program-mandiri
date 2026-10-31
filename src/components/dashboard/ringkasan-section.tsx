@@ -13,12 +13,12 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   AlertTriangle,
   CalendarCheck,
+  Camera,
   ClipboardList,
   FolderOpen,
   IdCard,
   Inbox,
   Network,
-  PenLine,
   Users,
 } from 'lucide-react'
 import { api } from '@/lib/client'
@@ -38,8 +38,8 @@ export default function RingkasanSection({
   onNavigate,
 }: {
   user: UserInfo
-  /** Dipakai CTA musyrif untuk melompat ke menu Input Setoran. */
-  onNavigate?: (section: 'input-setoran') => void
+  /** Dipakai CTA musyrif untuk melompat ke menu Absen. */
+  onNavigate?: (section: 'absensi') => void
 }) {
   const isMusyrif = user.role === 'musyrif'
   const [summary, setSummary] = useState<SummaryData | null>(null)
@@ -82,22 +82,22 @@ export default function RingkasanSection({
         </p>
       </div>
 
-      {/* CTA Input Setoran (khusus musyrif) */}
+      {/* CTA Absen (khusus musyrif) — menggantikan CTA Input Setoran */}
       {isMusyrif && onNavigate ? (
         <Card className="mt-4 gap-0 border-primary/20 bg-primary/5 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-medium">Siap mencatat setoran hari ini?</p>
+              <p className="text-sm font-medium">Sudah absen hari ini?</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Pilih program → halaqoh → siswa, lalu isi form setoran sesuai programnya.
+                Ambil foto selfie sebagai bukti kehadiran, lalu tunggu verifikasi admin.
               </p>
             </div>
             <Button
-              onClick={() => onNavigate('input-setoran')}
+              onClick={() => onNavigate('absensi')}
               className="min-h-11 w-fit shrink-0 sm:min-h-9"
             >
-              <PenLine className="h-4 w-4" aria-hidden />
-              Input Setoran
+              <Camera className="h-4 w-4" aria-hidden />
+              Absen
             </Button>
           </div>
         </Card>

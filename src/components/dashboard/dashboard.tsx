@@ -74,8 +74,9 @@ interface MenuItem {
 
 const MENU: MenuItem[] = [
   { key: 'ringkasan', label: 'Ringkasan', shortLabel: 'Ringkasan', icon: LayoutDashboard, primary: true },
-  { key: 'input-setoran', label: 'Input Setoran', shortLabel: 'Setoran', icon: PenLine, musyrifOnly: true, primary: true },
+  // Absen tepat di bawah Ringkasan (permintaan: menu absen musyrif berada di bawah ringkasan)
   { key: 'absensi', label: 'Absen', shortLabel: 'Absen', icon: Camera, musyrifOnly: true, primary: true },
+  { key: 'input-setoran', label: 'Input Setoran', shortLabel: 'Setoran', icon: PenLine, musyrifOnly: true, primary: true },
   { key: 'program', label: 'Program Kelas', shortLabel: 'Program', icon: FolderOpen, adminOnly: true, primary: true },
   { key: 'musyrif', label: 'Data Musyrif', shortLabel: 'Musyrif', icon: IdCard, adminOnly: true },
   { key: 'halaqoh', label: 'Data Halaqoh', shortLabel: 'Halaqoh', icon: Users, adminOnly: true },
