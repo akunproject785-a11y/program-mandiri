@@ -9,18 +9,21 @@ import { PrismaClient } from '@prisma/client'
  * bukan postgresql://, baca langsung dari file .env proyek.
  */
 function readEnvValue(key: string): string | undefined {
-  try {
-    const content = fs.readFileSync(path.join(process.cwd(), '.env'), 'utf8')
-    for (const line of content.split(/\r?\n/)) {
-      const m = /^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/.exec(line)
-      if (m && m[1] === key) {
-        const raw = m[2]
-        const unquoted = raw.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1')
-        return unquoted.length > 0 ? unquoted : undefined
+  // .env.local diprioritaskan: file .env bisa di-rewrite oleh bootstrap sandbox
+  for (const file of ['.env.local', '.env']) {
+    try {
+      const content = fs.readFileSync(path.join(process.cwd(), file), 'utf8')
+      for (const line of content.split(/\r?\n/)) {
+        const m = /^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/.exec(line)
+        if (m && m[1] === key) {
+          const raw = m[2]
+          const unquoted = raw.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1')
+          if (unquoted.length > 0) return unquoted
+        }
       }
+    } catch {
+      // file tidak ada — coba berikutnya
     }
-  } catch {
-    // .env tidak ada — abaikan
   }
   return undefined
 }
