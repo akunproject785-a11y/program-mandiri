@@ -211,3 +211,36 @@ export const HARI_INDO = [
   'Jumat',
   'Sabtu',
 ]
+
+// ===== Absensi musyrif =====
+
+/** Status verifikasi absensi musyrif oleh admin. */
+export type StatusAbsensi = 'PENDING' | 'ACC' | 'TOLAK'
+
+/** Satu record absensi harian musyrif (dengan foto selfie). */
+export interface AbsensiMusyrifItem {
+  id: string
+  musyrifId: string
+  musyrifNama: string
+  /** Tanggal absen "YYYY-MM-DD" zona WIB. */
+  tanggal: string
+  /** Jam absen "HH:MM:SS" zona WIB. */
+  jam: string
+  /** URL public foto selfie (Supabase Storage, sudah dikompres di klien). */
+  fotoUrl: string
+  status: StatusAbsensi
+  keterangan: string | null
+  /** Catatan admin saat ACC/Tolak (mis. alasan penolakan). */
+  catatanAdmin: string | null
+}
+
+/** Satu periode rekap absen (mingguan/bulanan) untuk dashboard admin. */
+export interface RekapAbsenPeriod {
+  /** 'YYYY-MM-DD' (tanggal Senin) untuk periode minggu, 'YYYY-MM' untuk bulan. */
+  key: string
+  label: string
+  mulai: string
+  sampai: string
+  /** Jumlah record absensi pada periode ini. */
+  jumlah: number
+}

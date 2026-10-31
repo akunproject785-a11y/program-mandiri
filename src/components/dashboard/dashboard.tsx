@@ -11,6 +11,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   BookOpenText,
+  CalendarClock,
+  Camera,
   ClipboardList,
   FolderOpen,
   GraduationCap,
@@ -20,6 +22,7 @@ import {
   MoreHorizontal,
   PenLine,
   Settings,
+  UserCheck,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -33,20 +36,26 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import RingkasanSection from '@/components/dashboard/ringkasan-section'
 import RekapanSection from '@/components/dashboard/rekapan-section'
 import InputSetoranSection from '@/components/dashboard/input-setoran-section'
+import AbsensiSection from '@/components/dashboard/absensi-section'
 import ProgramSection from '@/components/dashboard/program-section'
 import MusyrifSection from '@/components/dashboard/musyrif-section'
 import HalaqohSection from '@/components/dashboard/halaqoh-section'
 import SiswaSection from '@/components/dashboard/siswa-section'
+import KelolaAbsensiSection from '@/components/dashboard/kelola-absensi-section'
+import RekapAbsensiSection from '@/components/dashboard/rekap-absensi-section'
 import SettingsSection from '@/components/dashboard/settings-section'
 
 export type SectionKey =
   | 'ringkasan'
   | 'input-setoran'
+  | 'absensi'
   | 'program'
   | 'musyrif'
   | 'halaqoh'
   | 'siswa'
   | 'rekapan'
+  | 'kelola-absensi'
+  | 'rekap-absensi'
   | 'pengaturan'
 
 interface MenuItem {
@@ -66,11 +75,14 @@ interface MenuItem {
 const MENU: MenuItem[] = [
   { key: 'ringkasan', label: 'Ringkasan', shortLabel: 'Ringkasan', icon: LayoutDashboard, primary: true },
   { key: 'input-setoran', label: 'Input Setoran', shortLabel: 'Setoran', icon: PenLine, musyrifOnly: true, primary: true },
+  { key: 'absensi', label: 'Absen', shortLabel: 'Absen', icon: Camera, musyrifOnly: true, primary: true },
   { key: 'program', label: 'Program Kelas', shortLabel: 'Program', icon: FolderOpen, adminOnly: true, primary: true },
   { key: 'musyrif', label: 'Data Musyrif', shortLabel: 'Musyrif', icon: IdCard, adminOnly: true },
   { key: 'halaqoh', label: 'Data Halaqoh', shortLabel: 'Halaqoh', icon: Users, adminOnly: true },
   { key: 'siswa', label: 'Data Siswa', shortLabel: 'Siswa', icon: GraduationCap, adminOnly: true, primary: true },
   { key: 'rekapan', label: 'Rekap Setoran', shortLabel: 'Rekap', icon: ClipboardList, primary: true },
+  { key: 'kelola-absensi', label: 'Kelola Absen Musyrif', shortLabel: 'Kelola Absen', icon: UserCheck, adminOnly: true },
+  { key: 'rekap-absensi', label: 'Rekap Absen Musyrif', shortLabel: 'Rekap Absen', icon: CalendarClock, adminOnly: true },
   { key: 'pengaturan', label: 'Pengaturan', shortLabel: 'Pengaturan', icon: Settings },
 ]
 
@@ -337,6 +349,37 @@ export default function Dashboard({
     }
   }, [])
 
+  // ===== Realtime: subscribe perubahan tabel AbsensiMusyrif =====
+  // Section kelola/rekap absensi (admin) dimuat ulang otomatis saat musyrif absen.
+  const [absensiTick, setAbsensiTick] = useState(0)
+  const absensiPendingRef = useRef(false)
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient()
+    const channel = supabase
+      .channel('absensi-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'AbsensiMusyrif' },
+        () => {
+          if (absensiPendingRef.current) return
+          absensiPendingRef.current = true
+          setTimeout(() => {
+            absensiPendingRef.current = false
+            setAbsensiTick((t) => t + 1)
+            toast('Data absensi diperbarui', {
+              description: 'Absensi terbaru dari musyrif telah dimuat.',
+            })
+          }, 700)
+        }
+      )
+      .subscribe((status) => {
+        console.log('[realtime] absensi-changes:', status)
+      })
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
   const items = MENU.filter(
     (m) =>
       (!m.adminOnly || user.role === 'admin') &&
@@ -378,11 +421,18 @@ export default function Dashboard({
             <RingkasanSection key={`ringkasan-${dataTick}`} user={user} onNavigate={handleSelect} />
           )}
           {section === 'input-setoran' && <InputSetoranSection user={user} />}
+          {section === 'absensi' && <AbsensiSection user={user} />}
           {section === 'rekapan' && <RekapanSection key={`rekapan-${dataTick}`} user={user} />}
           {section === 'program' && <ProgramSection />}
           {section === 'musyrif' && <MusyrifSection />}
           {section === 'halaqoh' && <HalaqohSection />}
           {section === 'siswa' && <SiswaSection />}
+          {section === 'kelola-absensi' && (
+            <KelolaAbsensiSection key={`kelola-absensi-${absensiTick}`} />
+          )}
+          {section === 'rekap-absensi' && (
+            <RekapAbsensiSection key={`rekap-absensi-${absensiTick}`} />
+          )}
           {section === 'pengaturan' && <SettingsSection user={user} />}
         </div>
       </main>

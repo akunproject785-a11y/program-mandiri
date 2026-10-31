@@ -31,6 +31,7 @@ model Musyrif {
   authUserId  String           @unique
   halaqoh     HalaqohMusyrif[]
   setoran     Setoran[]
+  absensi     AbsensiMusyrif[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 }
@@ -117,4 +118,31 @@ model Setoran {
 model Setting {
   key   String @id
   value String
+}
+
+/**
+ * Absensi harian musyrif dengan foto selfie.
+ * - tanggal (string "YYYY-MM-DD", zona WIB) unik per musyrif — absen ulang pada
+ *   hari yang sama menimpa record lama dan mengembalikan status ke PENDING.
+ * - fotoUrl hanya menyimpan URL public Supabase Storage (bucket foto-absensi);
+ *   berkas foto dikompres di sisi klien agar ringan.
+ */
+model AbsensiMusyrif {
+  id           String    @id @default(cuid())
+  musyrifId    String
+  musyrif      Musyrif   @relation(fields: [musyrifId], references: [id], onDelete: Cascade)
+  tanggal      String
+  jam          String
+  fotoUrl      String
+  status       String    @default("PENDING") // PENDING | ACC | TOLAK
+  keterangan   String?
+  catatanAdmin String?
+  diputusOleh  String?
+  diputusPada  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([musyrifId, tanggal])
+  @@index([tanggal])
+  @@index([status])
 }
