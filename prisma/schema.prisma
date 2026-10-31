@@ -15,6 +15,7 @@ model Admin {
   id         String   @id @default(cuid())
   authUserId String   @unique
   email      String   @unique
+  username   String?  @unique
   name       String   @default("Administrator")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -26,6 +27,7 @@ model Musyrif {
   nik         String           @unique
   namaLengkap String
   email       String           @unique
+  username    String?          @unique
   authUserId  String           @unique
   halaqoh     HalaqohMusyrif[]
   setoran     Setoran[]

@@ -23,7 +23,7 @@ interface LoginDialogProps {
 }
 
 export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogProps) {
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -35,7 +35,7 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
     try {
       const data = await api<{ user: UserInfo }>('/api/auth/login', {
         method: 'POST',
-        body: { email: email.trim(), password },
+        body: { identifier: identifier.trim(), password },
       })
       toast.success(`Selamat datang, ${data.user.name}`)
       onLoginSuccess(data.user)
@@ -65,15 +65,15 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="login-username">Email</Label>
+                <Label htmlFor="login-username">Username atau Email</Label>
                 <Input
                   id="login-username"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="Masukkan email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  name="username"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="Masukkan username atau email"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   required
                   disabled={loading}
                   className="h-11"
@@ -127,10 +127,11 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
 
             <p className="rounded-lg bg-secondary/50 p-3 text-xs leading-relaxed text-muted-foreground">
               Demo — Admin:{' '}
-              <code className="font-mono font-semibold text-foreground">admin@quranmandiri.id</code>{' '}
+              <code className="font-mono font-semibold text-foreground">admin</code>{' '}
               / <code className="font-mono font-semibold text-foreground">admin123</code> · Musyrif:{' '}
-              <code className="font-mono font-semibold text-foreground">amanda@quranmandiri.id</code>{' '}
+              <code className="font-mono font-semibold text-foreground">amanda</code>{' '}
               / <code className="font-mono font-semibold text-foreground">musyrif123</code>
+              <span className="mt-1 block">Email tetap bisa dipakai untuk login.</span>
             </p>
           </CardContent>
         </Card>

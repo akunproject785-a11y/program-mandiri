@@ -3,13 +3,57 @@ import { db } from '@/lib/db'
 import { requireAdmin, requireAuth } from '@/lib/auth'
 import { isUniqueViolation } from '@/app/api/_lib/shared'
 import { createAuthUser, extractAuthError } from '@/lib/supabase/accounts'
+import {
+  fallbackUsername,
+  normalizeUsername,
+  usernameFromEmail,
+  validateUsername,
+} from '@/lib/username'
 
 const musyrifSelect = {
   id: true,
   nik: true,
   namaLengkap: true,
   email: true,
+  username: true,
 } as const
+
+/** Resolusi username akhir + cek duplikat lintas Admin & Musyrif.
+ *  Mengembalikan {error} bila bentrok dan tidak bisa di-otomatisasi. */
+async function resolveUsername(
+  raw: string,
+  email: string,
+  opts: { excludeMusyrifId?: string } = {}
+): Promise<{ username: string } | { error: string }> {
+  let candidate = raw ? normalizeUsername(raw) : usernameFromEmail(email)
+  const invalid = validateUsername(candidate)
+  if (invalid) return { error: invalid }
+
+  const free = async (u: string) => {
+    const [dupM, dupA] = await Promise.all([
+      db.musyrif.findFirst({
+        where: { username: u, ...(opts.excludeMusyrifId ? { id: { not: opts.excludeMusyrifId } } : {}) },
+        select: { id: true },
+      }),
+      db.admin.findUnique({ where: { username: u }, select: { id: true } }),
+    ])
+    return !dupM && !dupA
+  }
+
+  // Username diisi manual & bentrok → tolak (jangan diam-diam diubah).
+  if (raw && !(await free(candidate))) {
+    return { error: 'Username sudah dipakai akun lain' }
+  }
+  // Otomatis (kosong) & bentrok → coba variasi suffix pendek.
+  if (!raw && !(await free(candidate))) {
+    for (let i = 0; i < 3; i++) {
+      const alt = `${candidate}_${Math.random().toString(36).slice(2, 5)}`
+      if (await free(alt)) return { username: alt }
+    }
+    return { username: fallbackUsername() }
+  }
+  return { username: candidate }
+}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -42,6 +86,7 @@ export async function POST(request: Request) {
     const namaLengkap = typeof body.namaLengkap === 'string' ? body.namaLengkap.trim() : ''
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
     const password = typeof body.password === 'string' ? body.password : ''
+    const username = typeof body.username === 'string' ? body.username.trim() : ''
 
     if (!nik || !namaLengkap || !email || !password) {
       return NextResponse.json(
@@ -67,6 +112,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email sudah terdaftar' }, { status: 409 })
     }
 
+    // Username login (opsional; kosong = otomatis dari email)
+    const resolvedUsername = await resolveUsername(username, email)
+    if ('error' in resolvedUsername) {
+      return NextResponse.json({ error: resolvedUsername.error }, { status: 400 })
+    }
+
     // Buat user auth (email terkonfirmasi otomatis via service role)
     let authUserId: string
     try {
@@ -77,7 +128,7 @@ export async function POST(request: Request) {
 
     try {
       const musyrif = await db.musyrif.create({
-        data: { nik, namaLengkap, email, authUserId },
+        data: { nik, namaLengkap, email, username: resolvedUsername.username, authUserId },
         select: musyrifSelect,
       })
       return NextResponse.json({ musyrif })
@@ -90,7 +141,7 @@ export async function POST(request: Request) {
   } catch (e) {
     if (isUniqueViolation(e)) {
       return NextResponse.json(
-        { error: 'NIK atau email sudah terdaftar' },
+        { error: 'NIK, email, atau username sudah terdaftar' },
         { status: 409 }
       )
     }

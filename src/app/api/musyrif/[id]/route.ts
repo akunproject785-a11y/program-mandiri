@@ -8,6 +8,11 @@ import {
   updateAuthUserEmail,
   updateAuthUserPassword,
 } from '@/lib/supabase/accounts'
+import {
+  normalizeUsername,
+  usernameFromEmail,
+  validateUsername,
+} from '@/lib/username'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -16,6 +21,7 @@ const musyrifSelect = {
   nik: true,
   namaLengkap: true,
   email: true,
+  username: true,
 } as const
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -38,6 +44,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
     const namaLengkap = typeof body.namaLengkap === 'string' ? body.namaLengkap.trim() : ''
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
     const password = typeof body.password === 'string' ? body.password : ''
+    const usernameRaw = typeof body.username === 'string' ? body.username.trim() : ''
 
     if (!nik || !namaLengkap || !email) {
       return NextResponse.json(
@@ -51,6 +58,26 @@ export async function PUT(request: Request, { params }: RouteParams) {
     if (password !== '' && password.length < 6) {
       return NextResponse.json({ error: 'Password minimal 6 karakter' }, { status: 400 })
     }
+
+    // Username: kosong = otomatis dari email; diisi = wajib unik lintas Admin & Musyrif
+    const candidate = usernameRaw ? normalizeUsername(usernameRaw) : usernameFromEmail(email)
+    const invalidUsername = validateUsername(candidate)
+    if (invalidUsername) {
+      return NextResponse.json({ error: invalidUsername }, { status: 400 })
+    }
+    if (candidate !== existing.username) {
+      const [dupMusyrif, dupAdmin] = await Promise.all([
+        db.musyrif.findFirst({
+          where: { username: candidate, id: { not: id } },
+          select: { id: true },
+        }),
+        db.admin.findUnique({ where: { username: candidate }, select: { id: true } }),
+      ])
+      if (dupMusyrif || dupAdmin) {
+        return NextResponse.json({ error: 'Username sudah dipakai akun lain' }, { status: 409 })
+      }
+    }
+    const username = candidate
 
     // Cek duplikat (kecuali milik sendiri)
     if (nik !== existing.nik) {
@@ -80,14 +107,14 @@ export async function PUT(request: Request, { params }: RouteParams) {
 
     const musyrif = await db.musyrif.update({
       where: { id },
-      data: { nik, namaLengkap, email },
+      data: { nik, namaLengkap, email, username },
       select: musyrifSelect,
     })
     return NextResponse.json({ musyrif })
   } catch (e) {
     if (isUniqueViolation(e)) {
       return NextResponse.json(
-        { error: 'NIK atau email sudah terdaftar' },
+        { error: 'NIK, email, atau username sudah terdaftar' },
         { status: 409 }
       )
     }

@@ -22,6 +22,7 @@ export interface MusyrifItem {
   nik: string
   namaLengkap: string
   email: string
+  username: string | null
 }
 
 export interface HalaqohItem {

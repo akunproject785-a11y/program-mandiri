@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
 import type { MusyrifItem } from '@/lib/types'
+import { USERNAME_HINT, USERNAME_RE } from '@/lib/username'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -48,6 +49,7 @@ interface MusyrifFormState {
   nik: string
   namaLengkap: string
   email: string
+  username: string
   password: string
 }
 
@@ -55,6 +57,7 @@ const EMPTY_MUSYRIF_FORM: MusyrifFormState = {
   nik: '',
   namaLengkap: '',
   email: '',
+  username: '',
   password: '',
 }
 
@@ -98,7 +101,13 @@ export default function MusyrifSection() {
     setEditing(item)
     setForm(
       item
-        ? { nik: item.nik, namaLengkap: item.namaLengkap, email: item.email, password: '' }
+        ? {
+            nik: item.nik,
+            namaLengkap: item.namaLengkap,
+            email: item.email,
+            username: item.username ?? '',
+            password: '',
+          }
         : EMPTY_MUSYRIF_FORM
     )
     setFormOpen(true)
@@ -114,6 +123,10 @@ export default function MusyrifSection() {
       toast.error('Format email tidak valid.')
       return
     }
+    if (form.username.trim() && !USERNAME_RE.test(form.username.trim().toLowerCase())) {
+      toast.error(`Username tidak valid. ${USERNAME_HINT}`)
+      return
+    }
     if (!editing && !form.password.trim()) {
       toast.error('Password wajib diisi untuk musyrif baru.')
       return
@@ -123,11 +136,13 @@ export default function MusyrifSection() {
       nik: string
       namaLengkap: string
       email: string
+      username?: string
       password?: string
     } = {
       nik: form.nik.trim(),
       namaLengkap: form.namaLengkap.trim(),
       email: form.email.trim().toLowerCase(),
+      username: form.username.trim().toLowerCase(),
     }
     // Password hanya dikirim saat edit jika diisi (kosong = tidak diubah).
     if (!editing || form.password.trim()) body.password = form.password.trim()
@@ -284,6 +299,7 @@ export default function MusyrifSection() {
                         <TableRow>
                           <TableHead className="pl-4 sm:pl-6">NIK</TableHead>
                           <TableHead>Nama Lengkap</TableHead>
+                          <TableHead>Username</TableHead>
                           <TableHead>Email</TableHead>
                           <TableHead className="pr-4 text-right sm:pr-6">Aksi</TableHead>
                         </TableRow>
@@ -295,6 +311,11 @@ export default function MusyrifSection() {
                               {item.nik}
                             </TableCell>
                             <TableCell className="py-3 font-medium">{item.namaLengkap}</TableCell>
+                            <TableCell className="py-3">
+                              <Badge variant="secondary" className="font-mono">
+                                {item.username ?? '—'}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="py-3">
                               <Badge variant="outline" className="max-w-56 truncate">{item.email}</Badge>
                             </TableCell>
@@ -326,7 +347,10 @@ export default function MusyrifSection() {
                     {renderActions(item)}
                   </div>
                   <div>
-                    <Badge variant="outline" className="max-w-full truncate">{item.email}</Badge>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary" className="font-mono">{item.username ?? '—'}</Badge>
+                      <Badge variant="outline" className="max-w-full truncate">{item.email}</Badge>
+                    </div>
                   </div>
                 </Card>
               ))
@@ -382,6 +406,20 @@ export default function MusyrifSection() {
                 placeholder="cth: ali@quranmandiri.id"
                 required
                 autoComplete="off"
+              />
+            </Field>
+            <Field
+              label="Username"
+              htmlFor="musyrif-username"
+              hint={`Untuk login. ${USERNAME_HINT} Kosongkan untuk otomatis dari email.`}
+            >
+              <Input
+                id="musyrif-username"
+                value={form.username}
+                onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
+                placeholder="cth: ali"
+                autoComplete="off"
+                className="font-mono"
               />
             </Field>
             <Field
