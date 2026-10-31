@@ -1,0 +1,118 @@
+generator client {
+  provider      = "prisma-client-js"
+  // rhel-openssl-3.0.x: build environment Vercel (Amazon Linux 2023)
+  binaryTargets = ["native", "debian-openssl-3.0.x", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Admin {
+  // id cuid lokal; authUserId = auth.users.id (Supabase Auth)
+  id         String   @id @default(cuid())
+  authUserId String   @unique
+  email      String   @unique
+  name       String   @default("Administrator")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Musyrif {
+  // id cuid lokal; authUserId = auth.users.id (Supabase Auth)
+  id          String           @id @default(cuid())
+  nik         String           @unique
+  namaLengkap String
+  email       String           @unique
+  authUserId  String           @unique
+  halaqoh     HalaqohMusyrif[]
+  setoran     Setoran[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Program {
+  id            String    @id @default(cuid())
+  kode          String    @unique
+  nama          String
+  tipeInputan   String
+  targetHafalan String
+  halaqoh       Halaqoh[]
+  siswa         Siswa[]
+  setoran       Setoran[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Halaqoh {
+  id        String           @id @default(cuid())
+  kode      String           @unique
+  nama      String
+  programId String
+  program   Program          @relation(fields: [programId], references: [id])
+  musyrif   HalaqohMusyrif[]
+  siswa     Siswa[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model HalaqohMusyrif {
+  halaqohId String
+  musyrifId String
+  halaqoh   Halaqoh @relation(fields: [halaqohId], references: [id], onDelete: Cascade)
+  musyrif   Musyrif @relation(fields: [musyrifId], references: [id], onDelete: Cascade)
+
+  @@id([halaqohId, musyrifId])
+}
+
+model Siswa {
+  id        String    @id @default(cuid())
+  nis       String    @unique
+  kelas     String
+  nama      String
+  programId String
+  program   Program   @relation(fields: [programId], references: [id])
+  halaqohId String?
+  halaqoh   Halaqoh?  @relation(fields: [halaqohId], references: [id])
+  fotoUrl   String?
+  setoran   Setoran[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Setoran {
+  id              String   @id @default(cuid())
+  tipe            String
+  siswaId         String
+  siswa           Siswa    @relation(fields: [siswaId], references: [id])
+  programId       String?
+  program         Program? @relation(fields: [programId], references: [id], onDelete: SetNull)
+  musyrifId       String?
+  musyrif         Musyrif? @relation(fields: [musyrifId], references: [id], onDelete: SetNull)
+  tanggal         String
+  hari            String
+  anaba           String?
+  halaman         String?
+  jumlahBaris     Int?
+  nilaiKelancaran String?
+  kualitasBacaan  String?
+  catatanMusyrif  String?
+  juz             Int?
+  surat           String?
+  ayat            String?
+  materiBelajar   String?
+  nilai           String?
+  menuSetoran     String?
+  halamanMushaf   String?
+  createdAt       DateTime @default(now())
+
+  @@index([tanggal])
+  @@index([siswaId])
+}
+
+model Setting {
+  key   String @id
+  value String
+}
