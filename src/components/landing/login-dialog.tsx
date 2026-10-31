@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { BookOpenText, Eye, EyeOff, Loader2, LogIn } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
 import type { UserInfo } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -22,11 +23,28 @@ interface LoginDialogProps {
   onLoginSuccess: (user: UserInfo) => void
 }
 
+const LOGIN_SAVED_KEY = 'login-terimpan'
+
 export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogProps) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [saveCredentials, setSaveCredentials] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  // Isi otomatis username & password yang tersimpan (jika ada)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LOGIN_SAVED_KEY)
+      if (!saved) return
+      const parsed = JSON.parse(saved) as { identifier?: string; password?: string }
+      if (parsed.identifier) setIdentifier(parsed.identifier)
+      if (parsed.password) setPassword(parsed.password)
+      setSaveCredentials(true)
+    } catch {
+      // data tersimpan rusak -> abaikan
+    }
+  }, [])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -37,6 +55,15 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
         method: 'POST',
         body: { identifier: identifier.trim(), password },
       })
+      // Simpan / hapus kredensial sesuai centang "Simpan username & password"
+      if (saveCredentials) {
+        localStorage.setItem(
+          LOGIN_SAVED_KEY,
+          JSON.stringify({ identifier: identifier.trim(), password }),
+        )
+      } else {
+        localStorage.removeItem(LOGIN_SAVED_KEY)
+      }
       toast.success(`Selamat datang, ${data.user.name}`)
       onLoginSuccess(data.user)
     } catch (err) {
@@ -110,6 +137,21 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
                 </div>
               </div>
 
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="login-simpan"
+                  checked={saveCredentials}
+                  onCheckedChange={(v) => setSaveCredentials(v === true)}
+                  disabled={loading}
+                />
+                <Label
+                  htmlFor="login-simpan"
+                  className="cursor-pointer text-sm font-normal text-muted-foreground"
+                >
+                  Simpan username &amp; password
+                </Label>
+              </div>
+
               <Button type="submit" className="min-h-11 w-full" disabled={loading}>
                 {loading ? (
                   <>
@@ -124,15 +166,6 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
                 )}
               </Button>
             </form>
-
-            <p className="rounded-lg bg-secondary/50 p-3 text-xs leading-relaxed text-muted-foreground">
-              Demo — Admin:{' '}
-              <code className="font-mono font-semibold text-foreground">admin</code>{' '}
-              / <code className="font-mono font-semibold text-foreground">admin123</code> · Musyrif:{' '}
-              <code className="font-mono font-semibold text-foreground">amanda</code>{' '}
-              / <code className="font-mono font-semibold text-foreground">musyrif123</code>
-              <span className="mt-1 block">Email tetap bisa dipakai untuk login.</span>
-            </p>
           </CardContent>
         </Card>
       </DialogContent>
