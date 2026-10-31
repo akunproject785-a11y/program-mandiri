@@ -43,6 +43,7 @@ import HalaqohSection from '@/components/dashboard/halaqoh-section'
 import SiswaSection from '@/components/dashboard/siswa-section'
 import KelolaAbsensiSection from '@/components/dashboard/kelola-absensi-section'
 import RekapAbsensiSection from '@/components/dashboard/rekap-absensi-section'
+import AbsenAwalDialog from '@/components/dashboard/absen-awal-dialog'
 import SettingsSection from '@/components/dashboard/settings-section'
 
 export type SectionKey =
@@ -437,6 +438,9 @@ export default function Dashboard({
           {section === 'pengaturan' && <SettingsSection user={user} />}
         </div>
       </main>
+
+      {/* Popup pengingat absen saat musyrif baru login & belum absen hari ini */}
+      {user.role === 'musyrif' && <AbsenAwalDialog user={user} />}
     </div>
   )
 }

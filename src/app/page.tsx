@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, BookOpenText } from 'lucide-react'
 import { api } from '@/lib/client'
+import { ABSEN_POPUP_SKIP_KEY } from '@/components/dashboard/absen-awal-dialog'
 import type { UserInfo } from '@/lib/types'
 import LandingPage from '@/components/landing/landing-page'
 import Dashboard from '@/components/dashboard/dashboard'
@@ -31,6 +32,12 @@ export default function Home() {
       await api('/api/auth/logout', { method: 'POST' })
     } catch {
       // abaikan, tetap kembali ke landing
+    }
+    // Reset popup pengingat absen agar login berikutnya memunculkannya lagi.
+    try {
+      sessionStorage.removeItem(ABSEN_POPUP_SKIP_KEY)
+    } catch {
+      /* abaikan */
     }
     setUser(null)
   }, [])
