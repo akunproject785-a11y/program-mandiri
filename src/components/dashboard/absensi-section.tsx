@@ -14,7 +14,6 @@ import {
   Clock,
   History,
   ImageUp,
-  Images,
   RotateCcw,
   Send,
   X,
@@ -87,7 +86,6 @@ export default function AbsensiSection({ user }: { user: UserInfo }) {
   const [lihatFoto, setLihatFoto] = useState<string | null>(null)
 
   const kameraRef = useRef<HTMLInputElement>(null)
-  const galeriRef = useRef<HTMLInputElement>(null)
   const previewUrlLama = useRef<string | null>(null)
 
   const muat = useCallback(() => {
@@ -303,36 +301,23 @@ export default function AbsensiSection({ user }: { user: UserInfo }) {
                     </div>
                   </>
                 ) : (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Button onClick={() => kameraRef.current?.click()} disabled={compressing}>
+                  <div className="space-y-2">
+                    <Button onClick={() => kameraRef.current?.click()} disabled={compressing} className="w-full">
                       <Camera className="h-4 w-4" />
                       {compressing ? 'Mengompres…' : 'Buka Kamera'}
                     </Button>
-                    <Button variant="outline" onClick={() => galeriRef.current?.click()} disabled={compressing}>
-                      <Images className="h-4 w-4" /> Pilih dari Galeri
-                    </Button>
-                    <p className="text-xs text-muted-foreground sm:col-span-2">
+                    <p className="text-xs text-muted-foreground">
                       Gunakan kamera depan untuk selfie. Foto besar otomatis dikecilkan
                       sehingga unggahan ringan dan tidak memberatkan penyimpanan.
                     </p>
                   </div>
                 )}
-                {/* Input kamera (capture=depan) & galeri — tersembunyi */}
+                {/* Input kamera (capture=depan) — tersembunyi */}
                 <input
                   ref={kameraRef}
                   type="file"
                   accept="image/*"
                   capture="user"
-                  className="hidden"
-                  onChange={(e) => {
-                    void terapkanFile(e.target.files?.[0])
-                    e.target.value = ''
-                  }}
-                />
-                <input
-                  ref={galeriRef}
-                  type="file"
-                  accept="image/*"
                   className="hidden"
                   onChange={(e) => {
                     void terapkanFile(e.target.files?.[0])
