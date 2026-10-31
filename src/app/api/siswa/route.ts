@@ -9,7 +9,7 @@ import {
   siswaInclude,
 } from '@/app/api/_lib/shared'
 
-/** GET /api/siswa — auth. Urut nama asc.
+/** GET /api/siswa — auth. Urut NIS asc.
  *  Query opsional: halaqohId → filter halaqoh.
  *  Musyrif hanya menerima siswa dari halaqoh yang dia bina. */
 export async function GET(request: Request) {
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 
     const siswa = await db.siswa.findMany({
       where,
-      orderBy: { nama: 'asc' },
+      orderBy: { nis: 'asc' },
       include: siswaInclude,
     })
     return NextResponse.json({ siswa: siswa.map(mapSiswa) })

@@ -4,7 +4,7 @@
  * Section Data Siswa (admin): CRUD data santri beserta program & halaqoh binaan.
  * Opsi halaqoh pada form hanya menampilkan halaqoh dari program yang dipilih.
  */
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import {
   AlertTriangle,
   GraduationCap,
@@ -12,8 +12,10 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Search,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
@@ -56,12 +58,19 @@ import {
 
 /** Sentinel untuk opsi "tanpa halaqoh" (value="" tidak boleh pada SelectItem). */
 const HALAQOH_NONE = 'NONE'
+/** Sentinel opsi "semua" pada filter. */
+const FILTER_ALL = 'ALL'
 
 function getInitials(nama: string): string {
   const parts = nama.trim().split(/\s+/).filter(Boolean)
   const first = parts[0]?.charAt(0) ?? ''
   const last = parts.length > 1 ? (parts[parts.length - 1]?.charAt(0) ?? '') : ''
   return (first + last).toUpperCase() || '?'
+}
+
+/** Urut NIS secara angka-aware (20259 < 2025010 walau string). */
+function bandingNis(a: string, b: string): number {
+  return a.localeCompare(b, 'id', { numeric: true })
 }
 
 // programId memakai '' (bukan undefined) agar Select selalu terkontrol (tanpa warning React);
@@ -120,6 +129,65 @@ export default function SiswaSection() {
     setLoading(true)
     setRefreshKey((k) => k + 1)
   }, [])
+
+  // ===== Filter + urutan NIS =====
+  const [fCari, setFCari] = useState('')
+  const [fProgram, setFProgram] = useState<string>(FILTER_ALL)
+  const [fHalaqoh, setFHalaqoh] = useState<string>(FILTER_ALL)
+  const [fKelas, setFKelas] = useState<string>(FILTER_ALL)
+
+  const adaFilter =
+    fCari.trim() !== '' || fProgram !== FILTER_ALL || fHalaqoh !== FILTER_ALL || fKelas !== FILTER_ALL
+
+  const resetFilter = () => {
+    setFCari('')
+    setFProgram(FILTER_ALL)
+    setFHalaqoh(FILTER_ALL)
+    setFKelas(FILTER_ALL)
+  }
+
+  // Daftar kelas unik (urut angka-aware) untuk dropdown filter.
+  const kelasOptions = useMemo(
+    () =>
+      Array.from(new Set(siswa.map((s) => s.kelas))).sort((a, b) =>
+        a.localeCompare(b, 'id', { numeric: true })
+      ),
+    [siswa]
+  )
+
+  // Opsi halaqoh pada filter mengikuti program yang dipilih (kalau aktif).
+  const filterHalaqohOptions = useMemo(
+    () => (fProgram === FILTER_ALL ? halaqohList : halaqohList.filter((h) => h.programId === fProgram)),
+    [halaqohList, fProgram]
+  )
+
+  const handleFilterProgram = (value: string) => {
+    setFProgram(value)
+    // Halaqoh terpilih tidak lagi valid bila keluar dari program tersebut.
+    if (value !== FILTER_ALL && fHalaqoh !== FILTER_ALL && fHalaqoh !== HALAQOH_NONE) {
+      const masihCocok = halaqohList.some(
+        (h) => h.id === fHalaqoh && h.programId === value
+      )
+      if (!masihCocok) setFHalaqoh(FILTER_ALL)
+    }
+  }
+
+  const siswaTampil = useMemo(() => {
+    const term = fCari.trim().toLowerCase()
+    return siswa
+      .filter((s) => {
+        if (term && !`${s.nis} ${s.nama}`.toLowerCase().includes(term)) return false
+        if (fProgram !== FILTER_ALL && s.programId !== fProgram) return false
+        if (fHalaqoh === HALAQOH_NONE) {
+          if (s.halaqohId !== null) return false
+        } else if (fHalaqoh !== FILTER_ALL && s.halaqohId !== fHalaqoh) {
+          return false
+        }
+        if (fKelas !== FILTER_ALL && s.kelas !== fKelas) return false
+        return true
+      })
+      .sort((a, b) => bandingNis(a.nis, b.nis))
+  }, [siswa, fCari, fProgram, fHalaqoh, fKelas])
 
   // ===== Dialog import massal =====
   const [importOpen, setImportOpen] = useState(false)
@@ -324,7 +392,7 @@ export default function SiswaSection() {
     </div>
   )
 
-  const emptyState = (
+  const emptyState = siswa.length === 0 ? (
     <EmptyState
       icon={<GraduationCap />}
       title="Belum ada siswa"
@@ -340,6 +408,17 @@ export default function SiswaSection() {
           Tambah Siswa
         </Button>
       </div>
+    </EmptyState>
+  ) : (
+    <EmptyState
+      icon={<Search />}
+      title="Tidak ada siswa yang cocok"
+      description="Coba ubah kata kunci pencarian atau reset filter."
+    >
+      <Button variant="outline" onClick={resetFilter}>
+        <X className="h-4 w-4" />
+        Reset Filter
+      </Button>
     </EmptyState>
   )
 
@@ -373,15 +452,93 @@ export default function SiswaSection() {
         </EmptyState>
       ) : (
         <div className="mt-6 space-y-6">
+          {/* Baris filter + pencarian */}
+          <Card className="p-4">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="relative sm:col-span-2 lg:col-span-1">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  id="siswa-filter-cari"
+                  value={fCari}
+                  onChange={(e) => setFCari(e.target.value)}
+                  placeholder="Cari NIS atau nama…"
+                  aria-label="Cari NIS atau nama siswa"
+                  className="h-11 pl-9 lg:h-9"
+                />
+              </div>
+              <Select value={fProgram} onValueChange={handleFilterProgram}>
+                <SelectTrigger aria-label="Filter program kelas" className="h-11 w-full lg:h-9">
+                  <SelectValue placeholder="Semua Program" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={FILTER_ALL}>Semua Program</SelectItem>
+                  {programs.map((program) => (
+                    <SelectItem key={program.id} value={program.id}>
+                      {program.nama}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={fHalaqoh} onValueChange={setFHalaqoh}>
+                <SelectTrigger aria-label="Filter halaqoh" className="h-11 w-full lg:h-9">
+                  <SelectValue placeholder="Semua Halaqoh" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={FILTER_ALL}>Semua Halaqoh</SelectItem>
+                  <SelectItem value={HALAQOH_NONE}>Tanpa Halaqoh</SelectItem>
+                  {filterHalaqohOptions.map((h) => (
+                    <SelectItem key={h.id} value={h.id}>
+                      {h.nama}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-2">
+                <Select value={fKelas} onValueChange={setFKelas}>
+                  <SelectTrigger aria-label="Filter kelas" className="h-11 w-full lg:h-9">
+                    <SelectValue placeholder="Semua Kelas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={FILTER_ALL}>Semua Kelas</SelectItem>
+                    {kelasOptions.map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {k}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {adaFilter ? (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={resetFilter}
+                    aria-label="Reset filter"
+                    title="Reset filter"
+                    className="h-11 w-11 shrink-0 lg:h-9 lg:w-9"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </Card>
+
           {/* Tabel desktop (>= md) */}
           <div className="hidden md:block">
             <Card>
               <CardHeader>
                 <CardTitle>Daftar Siswa</CardTitle>
-                <CardDescription>{siswa.length} santri terdaftar.</CardDescription>
+                <CardDescription>
+                  {adaFilter
+                    ? `${siswaTampil.length} dari ${siswa.length} santri cocok dengan filter — urut NIS.`
+                    : `${siswa.length} santri terdaftar — urut NIS.`}
+                </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                {siswa.length === 0 ? (
+                {siswaTampil.length === 0 ? (
                   emptyState
                 ) : (
                   <div className="max-h-96 overflow-y-auto [scrollbar-width:thin]">
@@ -397,7 +554,7 @@ export default function SiswaSection() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {siswa.map((item) => (
+                        {siswaTampil.map((item) => (
                           <TableRow key={item.id}>
                             <TableCell className="py-3 pl-4 font-mono text-sm sm:pl-6">
                               {item.nis}
@@ -434,10 +591,10 @@ export default function SiswaSection() {
 
           {/* Kartu mobile (< md) */}
           <div className="grid gap-3 md:hidden">
-            {siswa.length === 0 ? (
+            {siswaTampil.length === 0 ? (
               <Card className="p-4">{emptyState}</Card>
             ) : (
-              siswa.map((item) => (
+              siswaTampil.map((item) => (
                 <Card key={item.id} className="gap-2 p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex min-w-0 items-start gap-2.5">

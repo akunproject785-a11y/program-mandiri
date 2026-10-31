@@ -70,3 +70,6 @@ server.log
 /src/components/dashboard/import-siswa-dialog.tsx
 /src/lib/import-siswa.ts
 /src/hooks/use-setoran-realtime.ts
+# Script lokal berisi proses deploy (tidak untuk repo publik)
+/scripts/deploy-vercel.sh
+/scripts/check-usernames.ts
