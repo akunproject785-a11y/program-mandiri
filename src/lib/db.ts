@@ -44,7 +44,8 @@ export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
     datasourceUrl: resolveDatabaseUrl() || undefined,
-    log: ['query'],
+    // Logging query hanya di development — di produksi (serverless) hanya error
+    log: process.env.NODE_ENV === 'production' ? ['error'] : ['query'],
   })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db

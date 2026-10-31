@@ -21,6 +21,13 @@ export async function updateSupabaseSession(request: NextRequest): Promise<NextR
 
   let response = NextResponse.next({ request })
 
+  // Pengunjung tanpa cookie auth Supabase tidak mungkin punya sesi —
+  // lewati panggilan getUser() (round-trip jaringan ke server auth) agar cepat.
+  const hasAuthCookies = request.cookies
+    .getAll()
+    .some((c) => c.name.startsWith('sb-'))
+  if (!hasAuthCookies) return response
+
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
