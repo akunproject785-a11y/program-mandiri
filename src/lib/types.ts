@@ -148,6 +148,39 @@ export interface StatsData {
   setoran: number
 }
 
+// ===== Rekapan bulanan per siswa =====
+
+/** Satu baris rekap bulanan untuk satu siswa (urut NIS dari server). */
+export interface RekapBulananSiswa {
+  siswaId: string
+  nis: string
+  nama: string
+  kelas: string
+  halaqohNama: string | null
+  programNama: string
+  /** Jumlah catatan setoran pada bulan terpilih. */
+  jumlahSetoran: number
+  /** Penjumlahan field "jumlahBaris" seluruh setoran pada bulan terpilih. */
+  totalBaris: number
+  /** Setoran AWAL bulan: catatan pertama bulan terpilih (urut tanggal, lalu waktu dibuat). */
+  awal: SetoranItem | null
+  /** Setoran AKHIR bulan: catatan terakhir bulan terpilih. */
+  akhir: SetoranItem | null
+}
+
+/** Respons GET /api/setoran/rekap-bulanan. */
+export interface RekapBulananData {
+  bulan: number
+  tahun: number
+  /** Label bulan, mis. "Oktober 2026". */
+  labelBulan: string
+  /** Jumlah siswa yang memiliki setoran pada bulan terpilih. */
+  jumlahSiswa: number
+  totalSetoran: number
+  totalBaris: number
+  rekap: RekapBulananSiswa[]
+}
+
 // ===== Konstanta bersama =====
 
 export const TIPE_OPTIONS: TipeInputan[] = ['A', 'B', 'C', 'D']

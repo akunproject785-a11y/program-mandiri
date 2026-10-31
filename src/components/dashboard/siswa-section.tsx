@@ -338,7 +338,6 @@ export default function SiswaSection() {
 
   const renderAvatar = (item: SiswaItem, className = 'h-9 w-9') =>
     item.fotoUrl ? (
-      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={item.fotoUrl}
         alt={`Foto ${item.nama}`}

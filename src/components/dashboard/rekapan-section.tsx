@@ -1,10 +1,13 @@
 'use client'
 
 /**
- * Section Rekap Setoran: filter (halaqoh/program/siswa/rentang tanggal),
- * daftar setoran (tabel desktop, kartu mobile),
- * dan 2 cara berbagi: Cetak PDF (window.print + layout A4) dan Bagikan WhatsApp
- * (popup review + salin teks + navigator.share/wa.me).
+ * Section Rekap Setoran dengan 2 tab:
+ * - "Daftar Setoran": filter (halaqoh/program/siswa/rentang tanggal),
+ *   daftar setoran (tabel desktop, kartu mobile),
+ *   dan 2 cara berbagi: Cetak PDF (window.print + layout A4) dan Bagikan WhatsApp
+ *   (popup review + salin teks + navigator.share/wa.me).
+ * - "Rekapan Bulanan": rekap per siswa satu bulan (setoran awal & akhir bulan,
+ *   jumlah baris ditotal, urut NIS) — komponen RekapanBulananView.
  * Type (tipe form A/B/C/D) TIDAK difilter maupun ditampilkan — Program sudah
  * mewakilinya; tipe hanya menentukan jenis form input setoran.
  *
@@ -56,6 +59,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   ConfirmDialog,
   EmptyState,
@@ -66,6 +70,7 @@ import {
 import SetoranFormDialog from '@/components/dashboard/setoran-form-dialog'
 import SetoranEditDialog from '@/components/dashboard/setoran-edit-dialog'
 import WaShareDialog from '@/components/dashboard/wa-share-dialog'
+import RekapanBulananView from '@/components/dashboard/rekapan-bulanan'
 
 const ALL = 'ALL'
 
@@ -201,6 +206,8 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
   const [deleteTarget, setDeleteTarget] = useState<SetoranItem | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [waOpen, setWaOpen] = useState(false)
+  /** Tab aktif: daftar setoran (default) atau rekapan bulanan per siswa. */
+  const [mode, setMode] = useState<'daftar' | 'bulanan'>('daftar')
 
   const isAdmin = user.role === 'admin'
 
@@ -349,7 +356,7 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
     <>
       <SectionHeader
         title="Rekap Setoran"
-        description="Rekap setoran hafalan — filter data, cetak PDF, atau bagikan ke grup WhatsApp."
+        description="Rekap setoran hafalan — daftar catatan, rekap bulanan per siswa, cetak PDF, atau bagikan ke grup WhatsApp."
       >
         {isAdmin ? (
           <Button
@@ -361,29 +368,45 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
             Catat Setoran
           </Button>
         ) : null}
-        <Button
-          variant="outline"
-          disabled={!canShare}
-          onClick={() => window.print()}
-          title="Cetak / simpan laporan sebagai PDF"
-          className="min-h-11 sm:min-h-9"
-        >
-          <Printer className="h-4 w-4" aria-hidden />
-          Cetak PDF
-        </Button>
-        <Button
-          disabled={!canShare}
-          onClick={() => setWaOpen(true)}
-          title="Review hasil rekap, salin teks, lalu bagikan ke grup WhatsApp"
-          className="min-h-11 bg-[#25D366] text-white hover:bg-[#1eb85a] sm:min-h-9"
-        >
-          <MessageCircle className="h-4 w-4" aria-hidden />
-          Bagikan WhatsApp
-        </Button>
+        {mode === 'daftar' ? (
+          <>
+            <Button
+              variant="outline"
+              disabled={!canShare}
+              onClick={() => window.print()}
+              title="Cetak / simpan laporan sebagai PDF"
+              className="min-h-11 sm:min-h-9"
+            >
+              <Printer className="h-4 w-4" aria-hidden />
+              Cetak PDF
+            </Button>
+            <Button
+              disabled={!canShare}
+              onClick={() => setWaOpen(true)}
+              title="Review hasil rekap, salin teks, lalu bagikan ke grup WhatsApp"
+              className="min-h-11 bg-[#25D366] text-white hover:bg-[#1eb85a] sm:min-h-9"
+            >
+              <MessageCircle className="h-4 w-4" aria-hidden />
+              Bagikan WhatsApp
+            </Button>
+          </>
+        ) : null}
       </SectionHeader>
 
-      {/* Filter bar */}
-      <Card className="mt-4 gap-0 p-4 print:hidden">
+      {/* Tab: Daftar Setoran | Rekapan Bulanan */}
+      <Tabs
+        value={mode}
+        onValueChange={(v) => setMode(v as 'daftar' | 'bulanan')}
+        className="mt-4"
+      >
+        <TabsList className="print:hidden">
+          <TabsTrigger value="daftar">Daftar Setoran</TabsTrigger>
+          <TabsTrigger value="bulanan">Rekapan Bulanan</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="daftar" className="mt-4">
+          {/* Filter bar */}
+          <Card className="gap-0 p-4 print:hidden">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           <FilterSelect
             label="Halaqoh"
@@ -599,6 +622,12 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
           </div>
         </>
       )}
+        </TabsContent>
+
+        <TabsContent value="bulanan" className="mt-4">
+          <RekapanBulananView user={user} halaqohList={halaqohList} />
+        </TabsContent>
+      </Tabs>
 
       {/* Dialog catat setoran (admin) */}
       {isAdmin ? (
@@ -637,7 +666,7 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
 
       {/* ====== AREA CETAK PDF (hanya tampil saat print) ====== */}
       <style>{PRINT_CSS}</style>
-      {canShare ? (
+      {mode === 'daftar' && canShare ? (
         <div id="tahfidz-print-area" className="hidden print:block">
           {/* Kepala laporan */}
           <div className="text-center">
