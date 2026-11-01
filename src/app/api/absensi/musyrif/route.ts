@@ -105,7 +105,10 @@ export async function POST(request: Request) {
       .from(BUCKET_ABSENSI)
       .upload(objectPath, buffer, {
         contentType: file.type,
-        cacheControl: '3600',
+        // Cache browser 1 tahun: path unik per unggah (tanggal+timestamp) dan isi
+        // selfie tidak pernah berubah selama URL sama — egress hemat besar saat
+        // admin meninjau foto absen berulang kali.
+        cacheControl: '31536000',
         upsert: false,
       })
     if (uploadError) {

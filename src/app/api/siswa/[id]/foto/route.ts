@@ -68,7 +68,9 @@ export async function POST(request: Request, { params }: RouteParams) {
       .from(BUCKET)
       .upload(objectPath, buffer, {
         contentType: file.type,
-        cacheControl: '3600',
+        // Cache browser 1 tahun: path selalu unik per unggah (timestamp) dan foto
+        // lama dihapus — isi foto tak berubah selama URL sama, jadi egress hemat.
+        cacheControl: '31536000',
         upsert: false,
       })
     if (uploadError) {

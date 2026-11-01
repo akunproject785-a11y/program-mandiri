@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
+import { compressImageFile, formatBytes } from '@/lib/image-compress'
 import type { HalaqohItem, Program, SiswaItem } from '@/lib/types'
 import SiswaImportDialog from '@/components/dashboard/siswa-import-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -308,18 +309,17 @@ export default function SiswaSection() {
     const targetId = uploadTargetId
     setUploadTargetId(null)
     if (!file || !targetId) return
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('Ukuran foto maksimal 2 MB.')
-      return
-    }
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       toast.error('Format foto harus JPG, PNG, atau WebP.')
       return
     }
     setUploadingFoto(true)
     try {
+      // Kompres di browser dulu (sama seperti selfie absen): 720px JPEG ±100 KB —
+      // hemat storage & egress, dan foto kamera >2 MB tetap bisa dipakai.
+      const hasil = await compressImageFile(file)
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', hasil.blob, 'foto.jpg')
       const res = await fetch(`/api/siswa/${targetId}/foto`, {
         method: 'POST',
         body: fd,
@@ -327,7 +327,9 @@ export default function SiswaSection() {
       })
       const data = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) throw new Error(data.error ?? 'Gagal mengunggah foto')
-      toast.success('Foto siswa berhasil diunggah')
+      toast.success(
+        `Foto siswa berhasil diunggah (${formatBytes(hasil.originalSize)} → ${formatBytes(hasil.compressedSize)})`
+      )
       refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Gagal mengunggah foto')
