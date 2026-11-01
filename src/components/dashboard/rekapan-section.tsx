@@ -7,8 +7,9 @@
  *   tanggal setoran tersisip per baris,
  *   dan 2 cara berbagi: Cetak PDF (window.print + layout A4) dan Bagikan WhatsApp
  *   (popup review + salin teks + navigator.share/wa.me) — teks WA berisi SEMUA
- *   siswa pada lingkup filter (yang setoran maupun belum) beserta status absen
- *   per tanggal, sehingga siswa hadir namun belum setoran tetap terlihat.
+ *   siswa pada lingkup filter (yang setoran maupun belum), tiap siswa cukup nama
+ *   (tanpa NIS/halaqoh), dengan status absen HARI INI saja sehingga siswa hadir
+ *   namun belum setoran tetap terlihat.
  * - "Rekapan Bulanan": rekap per siswa satu bulan (setoran awal & akhir bulan,
  *   jumlah baris ditotal, urut NIS) — komponen RekapanBulananView.
  * Type (tipe form A/B/C/D) TIDAK difilter maupun ditampilkan — Program sudah
@@ -188,40 +189,6 @@ function AbsenBadge({ status }: { status: StatusKehadiran | null }) {
   )
 }
 
-/** Jumlah hari kalender inklusif antara dua tanggal 'YYYY-MM-DD' (0 bila tak valid). */
-function hitungHari(from: string, to: string): number {
-  const a = Date.parse(`${from}T00:00:00Z`)
-  const b = Date.parse(`${to}T00:00:00Z`)
-  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 0
-  return Math.round((b - a) / 86400000) + 1
-}
-
-/** Baris "• Absen …" satu siswa untuk teks WA (harian / rentang / tanpa data). */
-function absenWALines(
-  recs: AbsensiSiswaHarianData['items'],
-  from: string,
-  to: string
-): string {
-  if (recs.length === 0) {
-    return '   • Absen: belum ada data absen'
-  }
-  if (from && from === to) {
-    const r = recs[0]
-    const ket = r.keterangan ? ` — ${r.keterangan}` : ''
-    // Harian: tanggal sudah pada header periode — cukup statusnya saja.
-    return `   • Absen: ${r.status}${ket}`
-  }
-  const hitung: Record<StatusKehadiran, number> = { HADIR: 0, SAKIT: 0, IZIN: 0, ALPA: 0 }
-  for (const r of recs) hitung[r.status] += 1
-  const isi = `${hitung.HADIR} hadir, ${hitung.SAKIT} sakit, ${hitung.IZIN} izin, ${hitung.ALPA} alpa`
-  const rentang =
-    from && to
-      ? `${formatTanggalPendek(from)}–${formatTanggalPendek(to)}: `
-      : ''
-  const belum = from && to ? Math.max(hitungHari(from, to) - recs.length, 0) : 0
-  return `   • Absen ${rentang}${isi}${belum > 0 ? `, ${belum} hari belum diabsen` : ''}`
-}
-
 /** Nilai singkat untuk teks WA: "A - Sangat Baik" → "A". */
 function nilaiPendek(item: SetoranItem): string {
   const raw = item.tipe === 'B' ? item.nilai : item.nilaiKelancaran
@@ -335,13 +302,16 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
     }
   }, [filters, refreshKey])
 
-  // Ambil absensi siswa pada rentang tanggal filter (gagal = kolom Absen kosong,
-  // jangan blok daftar setoran).
+  // Ambil absensi siswa pada rentang tanggal filter + selalu menyertakan HARI INI
+  // (rentang diperlebar bila hari ini di luar filter) — kolom Absen memakai record
+  // per tanggal baris, sedangkan teks WA memakai absen hari ini. Gagal fetch =
+  // kolom Absen kosong, jangan blok daftar setoran.
   useEffect(() => {
     let mounted = true
+    const today = todayISO()
     const params = new URLSearchParams()
-    if (filters.from) params.set('from', filters.from)
-    if (filters.to) params.set('to', filters.to)
+    if (filters.from) params.set('from', filters.from < today ? filters.from : today)
+    if (filters.to) params.set('to', filters.to > today ? filters.to : today)
     const qs = params.toString()
     api<AbsensiSiswaHarianData>(`/api/absensi-siswa/harian${qs ? `?${qs}` : ''}`)
       .then((d) => {
@@ -431,23 +401,15 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
     return m
   }, [setoran])
 
-  /** Absensi dikelompokkan per siswa (API sudah urut tanggal naik). */
-  const absenBySiswa = useMemo(() => {
-    const m = new Map<string, AbsensiSiswaHarianData['items']>()
-    for (const a of absenHarian) {
-      const arr = m.get(a.siswaId) ?? []
-      arr.push(a)
-      m.set(a.siswaId, arr)
-    }
-    return m
-  }, [absenHarian])
-
   /**
    * Teks rekap siap kirim WhatsApp: SEMUA siswa pada lingkup filter (yang setoran
-   * maupun belum) beserta status absennya, sehingga siswa yang HADIR namun belum
-   * setoran tetap terlihat. Dipotong bila sangat panjang.
+   * maupun belum), tiap siswa cukup nama tanpa NIS/halaqoh. Status absen yang
+   * ditampilkan HANYA absen hari ini (bukan rekapan rentang) sehingga laporan
+   * harian tetap ringkas; siswa yang HADIR namun belum setoran tetap terlihat.
+   * Dipotong bila sangat panjang.
    */
   const buildWAText = useCallback((): string => {
+    const today = todayISO()
     const lines: string[] = []
     lines.push('*REKAP SETORAN & ABSENSI TAHFIDZ*')
     lines.push("Program Qur'an Mandiri")
@@ -469,10 +431,10 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
     if (universe.length === 0) {
       lines.push('Tidak ada siswa pada lingkup filter ini.')
     }
-    // Ringkasan kehadiran untuk baris Total (hanya jenis yang >0 yang ditampilkan).
+    // Ringkasan kehadiran HARI INI untuk baris Total (hanya jenis yang >0).
     const ringkas: string[] = []
     const hitungTotal: Record<StatusKehadiran, number> = { HADIR: 0, SAKIT: 0, IZIN: 0, ALPA: 0 }
-    for (const a of absenHarian) hitungTotal[a.status] += 1
+    for (const a of absenHarian) if (a.tanggal === today) hitungTotal[a.status] += 1
     if (hitungTotal.HADIR > 0) ringkas.push(`${hitungTotal.HADIR} hadir`)
     if (hitungTotal.SAKIT > 0) ringkas.push(`${hitungTotal.SAKIT} sakit`)
     if (hitungTotal.IZIN > 0) ringkas.push(`${hitungTotal.IZIN} izin`)
@@ -480,15 +442,15 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
     const harian = Boolean(filters.from && filters.from === filters.to)
     let totalSetoran = 0
     universe.forEach((s, i) => {
-      const recsAbsen = absenBySiswa.get(s.id) ?? []
       const recsSetoran = setoranBySiswa.get(s.id) ?? []
       totalSetoran += recsSetoran.length
-      // Ringkas tanpa NIS; halaqoh hanya ditambahkan bila share mencakup semua
-      // halaqoh (tanpa filter) agar siswa tetap bisa dikenali pembaca grup.
-      const labelHalaqoh =
-        filters.halaqohId === ALL && s.halaqohNama ? ` (${s.halaqohNama})` : ''
-      lines.push(`${i + 1}. ${s.nama}${labelHalaqoh}`)
-      lines.push(absenWALines(recsAbsen, filters.from, filters.to))
+      lines.push(`${i + 1}. ${s.nama}`)
+      const absenHariIni = absenMap.get(`${s.id}|${today}`)
+      lines.push(
+        absenHariIni
+          ? `   • Absen: ${absenHariIni.status}${absenHariIni.keterangan ? ` — ${absenHariIni.keterangan}` : ''}`
+          : '   • Absen: belum diabsen'
+      )
       if (recsSetoran.length === 0) {
         lines.push('   • Setoran: belum setoran')
       } else if (harian) {
@@ -521,7 +483,7 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
     return text.length > 6000
       ? text.slice(0, 6000) + '\n\n…(data dipotong, cetak PDF untuk laporan lengkap)'
       : text
-  }, [siswaList, filters, absenBySiswa, setoranBySiswa, filterRingkas])
+  }, [siswaList, filters, absenMap, setoranBySiswa, filterRingkas, absenHarian])
 
   /** Teks final untuk popup review WA — dihitung ulang saat data/filter berubah. */
   const waText = useMemo(() => buildWAText(), [buildWAText])
