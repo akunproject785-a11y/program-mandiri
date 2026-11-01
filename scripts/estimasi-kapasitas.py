@@ -45,3 +45,16 @@ print(f"Invocations Vercel  : {invokasi_vercel:9,} /bulan -> dari 1.000.000")
 print(f"Active CPU Vercel   : {cpu_vercel_jam:6.2f} jam/bulan -> dari 4 jam")
 print(f"Pesan Realtime      : {inv_realtime_msg:9,} /bulan -> dari 2.000.000")
 print(f"MAU (auth)          : {user_aktif:9,} /bulan -> dari 50.000")
+
+# --- Skenario Active CPU (Fluid Compute: hanya CPU aktif yang ditagih, I/O gratis) ---
+print("\n== Skenario Active CPU (4 jam/bulan Hobby) ==")
+cpu_per_invokasi = 0.075  # detik CPU aktif per panggilan API (routing+serialize; I/O DB tak ditagih)
+for label, n_user, per_hari in [
+    ("Sekarang (25 pengguna)", 25, 100),
+    ("Tumbuh 2x (40+ pengguna)", 40, 100),
+    ("Tumbuh 4x (25 pengguna, traffic x4)", 25, 400),
+    ("BAHAYA: +polling tiap 30 detik saat jam kerja", 25, 100 + 960),
+]:
+    inv = n_user * per_hari * HARI
+    jam = inv * cpu_per_invokasi / 3600
+    print(f"{label:46s}: {inv:9,} invokasi -> {jam:5.2f} jam CPU ({jam/4*100:5.1f}% dari 4 jam)")
