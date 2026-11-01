@@ -3,9 +3,12 @@
 /**
  * Section Rekap Setoran dengan 2 tab:
  * - "Daftar Setoran": filter (halaqoh/program/siswa/rentang tanggal),
- *   daftar setoran (tabel desktop, kartu mobile),
+ *   daftar setoran (tabel desktop, kartu mobile) dengan status ABSEN siswa pada
+ *   tanggal setoran tersisip per baris,
  *   dan 2 cara berbagi: Cetak PDF (window.print + layout A4) dan Bagikan WhatsApp
- *   (popup review + salin teks + navigator.share/wa.me).
+ *   (popup review + salin teks + navigator.share/wa.me) — teks WA berisi SEMUA
+ *   siswa pada lingkup filter (yang setoran maupun belum) beserta status absen
+ *   per tanggal, sehingga siswa hadir namun belum setoran tetap terlihat.
  * - "Rekapan Bulanan": rekap per siswa satu bulan (setoran awal & akhir bulan,
  *   jumlah baris ditotal, urut NIS) — komponen RekapanBulananView.
  * Type (tipe form A/B/C/D) TIDAK difilter maupun ditampilkan — Program sudah
@@ -34,10 +37,13 @@ import {
   todayISO,
 } from '@/lib/format'
 import {
+  STATUS_KEHADIRAN,
+  type AbsensiSiswaHarianData,
   type HalaqohItem,
   type Program,
   type SetoranItem,
   type SiswaItem,
+  type StatusKehadiran,
   type UserInfo,
 } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -160,6 +166,61 @@ function chipMateri(item: SetoranItem): string | null {
   return null
 }
 
+/** Warna badge status absen siswa (HADIR hijau, SAKIT amber, IZIN biru, ALPA merah). */
+const ABSEN_WARNA: Record<StatusKehadiran, string> = {
+  HADIR: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+  SAKIT: 'border-amber-200 bg-amber-100 text-amber-700',
+  IZIN: 'border-sky-200 bg-sky-100 text-sky-700',
+  ALPA: 'border-red-200 bg-red-100 text-red-700',
+}
+
+/** Badge status absen siswa; null = siswa belum diabsen pada tanggal tersebut. */
+function AbsenBadge({ status }: { status: StatusKehadiran | null }) {
+  if (!status) {
+    return <span className="text-xs text-muted-foreground">Belum diabsen</span>
+  }
+  return (
+    <span
+      className={`inline-block rounded-md border px-2 py-0.5 text-xs font-semibold ${ABSEN_WARNA[status]}`}
+    >
+      {status}
+    </span>
+  )
+}
+
+/** Jumlah hari kalender inklusif antara dua tanggal 'YYYY-MM-DD' (0 bila tak valid). */
+function hitungHari(from: string, to: string): number {
+  const a = Date.parse(`${from}T00:00:00Z`)
+  const b = Date.parse(`${to}T00:00:00Z`)
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 0
+  return Math.round((b - a) / 86400000) + 1
+}
+
+/** Baris "• Absen …" satu siswa untuk teks WA (harian / rentang / tanpa data). */
+function absenWALines(
+  recs: AbsensiSiswaHarianData['items'],
+  from: string,
+  to: string
+): string {
+  if (recs.length === 0) {
+    return '   • Absen: belum ada data absen'
+  }
+  if (from && from === to) {
+    const r = recs[0]
+    const ket = r.keterangan ? ` — ${r.keterangan}` : ''
+    return `   • Absen ${formatTanggalPendek(from)}: ${r.status}${ket}`
+  }
+  const hitung: Record<StatusKehadiran, number> = { HADIR: 0, SAKIT: 0, IZIN: 0, ALPA: 0 }
+  for (const r of recs) hitung[r.status] += 1
+  const isi = `${hitung.HADIR} hadir, ${hitung.SAKIT} sakit, ${hitung.IZIN} izin, ${hitung.ALPA} alpa`
+  const rentang =
+    from && to
+      ? `${formatTanggalPendek(from)}–${formatTanggalPendek(to)}: `
+      : ''
+  const belum = from && to ? Math.max(hitungHari(from, to) - recs.length, 0) : 0
+  return `   • Absen ${rentang}${isi}${belum > 0 ? `, ${belum} hari belum diabsen` : ''}`
+}
+
 /** Nilai singkat untuk teks WA: "A - Sangat Baik" → "A". */
 function nilaiPendek(item: SetoranItem): string {
   const raw = item.tipe === 'B' ? item.nilai : item.nilaiKelancaran
@@ -206,6 +267,8 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
   const [deleteTarget, setDeleteTarget] = useState<SetoranItem | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [waOpen, setWaOpen] = useState(false)
+  /** Record absensi siswa pada rentang tanggal filter (untuk kolom Absen & teks WA). */
+  const [absenHarian, setAbsenHarian] = useState<AbsensiSiswaHarianData['items']>([])
   /** Tab aktif: daftar setoran (default) atau rekapan bulanan per siswa. */
   const [mode, setMode] = useState<'daftar' | 'bulanan'>('daftar')
 
@@ -271,6 +334,39 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
     }
   }, [filters, refreshKey])
 
+  // Ambil absensi siswa pada rentang tanggal filter (gagal = kolom Absen kosong,
+  // jangan blok daftar setoran).
+  useEffect(() => {
+    let mounted = true
+    const params = new URLSearchParams()
+    if (filters.from) params.set('from', filters.from)
+    if (filters.to) params.set('to', filters.to)
+    const qs = params.toString()
+    api<AbsensiSiswaHarianData>(`/api/absensi-siswa/harian${qs ? `?${qs}` : ''}`)
+      .then((d) => {
+        if (mounted) setAbsenHarian(d.items)
+      })
+      .catch(() => {
+        if (mounted) setAbsenHarian([])
+      })
+    return () => {
+      mounted = false
+    }
+  }, [filters.from, filters.to, refreshKey])
+
+  /** Peta absen: "siswaId|tanggal" → record (status + keterangan). */
+  const absenMap = useMemo(
+    () => new Map(absenHarian.map((a) => [`${a.siswaId}|${a.tanggal}`, a])),
+    [absenHarian]
+  )
+
+  /** Status absen satu siswa pada tanggal satu setoran (null = belum diabsen). */
+  const absenUntuk = useCallback(
+    (siswaId: string, tanggal: string): StatusKehadiran | null =>
+      absenMap.get(`${siswaId}|${tanggal}`)?.status ?? null,
+    [absenMap]
+  )
+
   /** Ringkasan filter aktif untuk header laporan cetak & teks WA. */
   const filterRingkas = useMemo(() => {
     const periode =
@@ -321,33 +417,91 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
     }
   }
 
-  /** Teks rekap siap kirim WhatsApp (dipotong bila sangat panjang). */
+  /** Setoran dikelompokkan per siswa (urut tanggal naik) untuk teks WA per siswa. */
+  const setoranBySiswa = useMemo(() => {
+    const m = new Map<string, SetoranItem[]>()
+    for (const item of [...setoran].sort((a, b) => (a.tanggal < b.tanggal ? -1 : 1))) {
+      const arr = m.get(item.siswaId) ?? []
+      arr.push(item)
+      m.set(item.siswaId, arr)
+    }
+    return m
+  }, [setoran])
+
+  /** Absensi dikelompokkan per siswa (API sudah urut tanggal naik). */
+  const absenBySiswa = useMemo(() => {
+    const m = new Map<string, AbsensiSiswaHarianData['items']>()
+    for (const a of absenHarian) {
+      const arr = m.get(a.siswaId) ?? []
+      arr.push(a)
+      m.set(a.siswaId, arr)
+    }
+    return m
+  }, [absenHarian])
+
+  /**
+   * Teks rekap siap kirim WhatsApp: SEMUA siswa pada lingkup filter (yang setoran
+   * maupun belum) beserta status absennya, sehingga siswa yang HADIR namun belum
+   * setoran tetap terlihat. Dipotong bila sangat panjang.
+   */
   const buildWAText = useCallback((): string => {
     const lines: string[] = []
-    lines.push('*REKAP SETORAN TAHFIDZ*')
+    lines.push('*REKAP SETORAN & ABSENSI TAHFIDZ*')
     lines.push("Program Qur'an Mandiri")
     lines.push('')
     lines.push(filterRingkas)
     lines.push('')
-    setoran.forEach((item, i) => {
-      const nilai = nilaiPendek(item)
-      lines.push(
-        `${i + 1}. ${formatTanggalPendek(item.tanggal)} • ${item.siswaNama} (${item.programNama}): ${describeSetoran(item)}${nilai ? ` — Nilai ${nilai}` : ''}`
+
+    // Universe siswa = semua siswa pada lingkup filter (list /api/siswa sudah
+    // ter-scope per role: musyrif hanya siswa halaqoh binaannya), urut NIS.
+    const universe = siswaList
+      .filter(
+        (s) =>
+          (filters.halaqohId === ALL || s.halaqohId === filters.halaqohId) &&
+          (filters.programId === ALL || s.programId === filters.programId) &&
+          (filters.siswaId === ALL || s.id === filters.siswaId)
       )
+      .sort((a, b) => a.nis.localeCompare(b.nis, 'id', { numeric: true }))
+
+    if (universe.length === 0) {
+      lines.push('Tidak ada siswa pada lingkup filter ini.')
+    }
+    let totalSetoran = 0
+    universe.forEach((s, i) => {
+      const recsAbsen = absenBySiswa.get(s.id) ?? []
+      const recsSetoran = setoranBySiswa.get(s.id) ?? []
+      totalSetoran += recsSetoran.length
+      lines.push(
+        `${i + 1}. ${s.nama} — NIS ${s.nis}${s.halaqohNama ? ` (${s.halaqohNama})` : ''}`
+      )
+      lines.push(absenWALines(recsAbsen, filters.from, filters.to))
+      if (recsSetoran.length === 0) {
+        lines.push('   • Setoran: belum setoran')
+      } else {
+        lines.push(`   • Setoran: ${recsSetoran.length} kali`)
+        recsSetoran.forEach((item) => {
+          const nilai = nilaiPendek(item)
+          lines.push(
+            `     - ${formatTanggalPendek(item.tanggal)}: ${describeSetoran(item)}${nilai ? ` — Nilai ${nilai}` : ''}`
+          )
+        })
+      }
     })
     lines.push('')
-    lines.push(`Total: ${setoran.length} setoran`)
+    lines.push(`Total: ${universe.length} siswa • ${totalSetoran} setoran`)
     lines.push('')
     lines.push("_Dikirim dari aplikasi Program Qur'an Mandiri_")
     const text = lines.join('\n')
     // WhatsApp menerima ±65.000 karakter; jaga aman.
-    return text.length > 3000 ? text.slice(0, 3000) + '\n\n…(data dipotong, cetak PDF untuk laporan lengkap)' : text
-  }, [setoran, filterRingkas])
+    return text.length > 6000
+      ? text.slice(0, 6000) + '\n\n…(data dipotong, cetak PDF untuk laporan lengkap)'
+      : text
+  }, [siswaList, filters, absenBySiswa, setoranBySiswa, filterRingkas])
 
   /** Teks final untuk popup review WA — dihitung ulang saat data/filter berubah. */
   const waText = useMemo(() => buildWAText(), [buildWAText])
 
-  const canShare = !loading && !error && setoran.length > 0
+  const canShare = !loading && !error && (setoran.length > 0 || absenHarian.length > 0)
 
   /** Tampilkan kolom aksi jika admin, atau jika ada rekaman yang bisa dikelola musyrif ini. */
   const showAksi = isAdmin || setoran.some(canManage)
@@ -530,6 +684,7 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
                 <TableRow>
                   <TableHead>Tanggal</TableHead>
                   <TableHead>Siswa</TableHead>
+                  <TableHead className="w-28">Absen</TableHead>
                   <TableHead>Program</TableHead>
                   <TableHead>Jenis Setoran</TableHead>
                   <TableHead>Nilai</TableHead>
@@ -549,6 +704,9 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
                     <TableCell>
                       <p className="font-medium">{item.siswaNama}</p>
                       <p className="text-xs text-muted-foreground">NIS {item.siswaNis}</p>
+                    </TableCell>
+                    <TableCell>
+                      <AbsenBadge status={absenUntuk(item.siswaId, item.tanggal)} />
                     </TableCell>
                     <TableCell className="text-sm">{item.programNama}</TableCell>
                     <TableCell>
@@ -600,6 +758,7 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">{describeSetoran(item)}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <AbsenBadge status={absenUntuk(item.siswaId, item.tanggal)} />
                   <NilaiBadge nilai={item.tipe === 'B' ? item.nilai : item.nilaiKelancaran} />
                   {chipMateri(item) ? (
                     <span className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground">
@@ -689,6 +848,7 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
                 <th className="w-8">No</th>
                 <th className="w-24">Tanggal</th>
                 <th className="w-36">Siswa</th>
+                <th className="w-20">Absen</th>
                 <th className="w-24">Halaqoh</th>
                 <th className="w-24">Program</th>
                 <th>Jenis Setoran</th>
@@ -712,6 +872,7 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
                       NIS {item.siswaNis} — {item.programNama}
                     </span>
                   </td>
+                  <td>{absenUntuk(item.siswaId, item.tanggal) ?? '-'}</td>
                   <td>
                     {siswaList.find((s) => s.id === item.siswaId)?.halaqohNama ?? '-'}
                   </td>

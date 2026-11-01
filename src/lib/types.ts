@@ -306,3 +306,16 @@ export interface RekapAbsensiSiswaData {
   tahun: number
   items: RekapAbsensiSiswaRow[]
 }
+
+/** Satu record absen siswa pada rentang tanggal (untuk Daftar Setoran & share WA). */
+export interface AbsensiSiswaHarianRow {
+  siswaId: string
+  tanggal: string
+  status: StatusKehadiran
+  keterangan: string | null
+}
+
+/** Respons GET /api/absensi-siswa/harian. */
+export interface AbsensiSiswaHarianData {
+  items: AbsensiSiswaHarianRow[]
+}
