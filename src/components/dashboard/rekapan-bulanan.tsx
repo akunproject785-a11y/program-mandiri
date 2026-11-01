@@ -25,7 +25,12 @@ import {
   formatTanggalPendek,
   todayISO,
 } from '@/lib/format'
-import type { HalaqohItem, RekapBulananData, UserInfo } from '@/lib/types'
+import type {
+  HalaqohItem,
+  RekapAbsensiSiswaData,
+  RekapBulananData,
+  UserInfo,
+} from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -58,6 +63,14 @@ const NAMA_BULAN = [
 /** Format angka gaya Indonesia: 1234 → "1.234". */
 function formatAngka(n: number): string {
   return new Intl.NumberFormat('id-ID').format(n)
+}
+
+/** Sel kolom absensi "H/S/I/A" (Hadir/Sakit/Izin/Alpa); '—' bila tak ada data absen. */
+function absensiSel(
+  a?: { hadir: number; sakit: number; izin: number; alpa: number } | null
+): string {
+  if (!a) return '—'
+  return `${a.hadir}/${a.sakit}/${a.izin}/${a.alpa}`
 }
 
 /** Dropdown filter kecil dengan label di atasnya. */
@@ -110,6 +123,7 @@ export default function RekapanBulananView({
   const [tahun, setTahun] = useState(() => new Date().getFullYear())
   const [halaqohId, setHalaqohId] = useState<string>(ALL)
   const [data, setData] = useState<RekapBulananData | null>(null)
+  const [absensiMap, setAbsensiMap] = useState<Map<string, RekapAbsensiSiswaData['items'][number]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -127,10 +141,16 @@ export default function RekapanBulananView({
     let mounted = true
     const params = new URLSearchParams({ bulan: String(bulan), tahun: String(tahun) })
     if (halaqohId !== ALL) params.set('halaqohId', halaqohId)
-    api<RekapBulananData>(`/api/setoran/rekap-bulanan?${params.toString()}`)
-      .then((d) => {
+    // Rekap absensi siswa dimuat paralel; gagal = kolom absensi tampil '—' (tidak fatal).
+    const pSetoran = api<RekapBulananData>(`/api/setoran/rekap-bulanan?${params.toString()}`)
+    const pAbsensi = api<RekapAbsensiSiswaData>(
+      `/api/absensi-siswa/rekap?${params.toString()}`
+    ).catch(() => null)
+    Promise.all([pSetoran, pAbsensi])
+      .then(([d, abs]) => {
         if (!mounted) return
         setData(d)
+        setAbsensiMap(new Map(abs?.items.map((a) => [a.siswaId, a]) ?? []))
         setError(null)
       })
       .catch((err: Error) => {
@@ -145,6 +165,42 @@ export default function RekapanBulananView({
       mounted = false
     }
   }, [bulan, tahun, halaqohId, refreshKey])
+
+  /**
+   * Gabungan baris rekap: siswa bersetoran bulan ini + siswa yang PUNYA data absensi
+   * tapi tidak ada setoran (baris setoran kosong) — absen siswa ikut masuk laporan.
+   * Urut NIS angka-aware, konsisten dengan rekap setoran.
+   */
+  const rekapGabungan = useMemo<RekapBulananData['rekap']>(() => {
+    if (!data) return []
+    const rows: RekapBulananData['rekap'] = data.rekap.map((r) => {
+      const a = absensiMap.get(r.siswaId)
+      return {
+        ...r,
+        absensi: a
+          ? { hadir: a.hadir, sakit: a.sakit, izin: a.izin, alpa: a.alpa }
+          : null,
+      }
+    })
+    const sudah = new Set(rows.map((r) => r.siswaId))
+    for (const a of absensiMap.values()) {
+      if (sudah.has(a.siswaId)) continue
+      rows.push({
+        siswaId: a.siswaId,
+        nis: a.nis,
+        nama: a.nama,
+        kelas: a.kelas,
+        halaqohNama: a.halaqohNama,
+        programNama: a.programNama,
+        jumlahSetoran: 0,
+        totalBaris: 0,
+        awal: null,
+        akhir: null,
+        absensi: { hadir: a.hadir, sakit: a.sakit, izin: a.izin, alpa: a.alpa },
+      })
+    }
+    return rows.sort((a, b) => a.nis.localeCompare(b.nis, 'id', { numeric: true }))
+  }, [data, absensiMap])
 
   /** Terapkan perubahan filter + tandai sedang memuat (pola sama dengan RekapanSection). */
   const updateFilter = (patch: { bulan?: number; tahun?: number; halaqohId?: string }) => {
@@ -171,7 +227,7 @@ export default function RekapanBulananView({
     return `Bulan: ${NAMA_BULAN[bulan - 1]} ${tahun} • Halaqoh: ${halaqohLabel}`
   }, [bulan, tahun, halaqohId, halaqohList])
 
-  const canShare = !loading && !error && !!data && data.rekap.length > 0
+  const canShare = !loading && !error && !!data && rekapGabungan.length > 0
 
   /** Teks rekap bulanan siap kirim WhatsApp (dipotong bila sangat panjang). */
   const buildWAText = useCallback((): string => {
@@ -182,7 +238,7 @@ export default function RekapanBulananView({
     lines.push('')
     lines.push(filterRingkas)
     lines.push('')
-    data.rekap.forEach((r, i) => {
+    rekapGabungan.forEach((r, i) => {
       const awalIsi = r.awal ? describeSetoran(r.awal) : ''
       const akhirIsi = r.akhir ? describeSetoran(r.akhir) : ''
       lines.push(
@@ -197,10 +253,15 @@ export default function RekapanBulananView({
       lines.push(
         `   Total: ${r.jumlahSetoran} setoran • ${formatAngka(r.totalBaris)} baris`
       )
+      if (r.absensi) {
+        lines.push(
+          `   Absensi: ${r.absensi.hadir} hadir, ${r.absensi.sakit} sakit, ${r.absensi.izin} izin, ${r.absensi.alpa} alpa`
+        )
+      }
     })
     lines.push('')
     lines.push(
-      `Total keseluruhan: ${data.jumlahSiswa} siswa • ${formatAngka(data.totalSetoran)} setoran • ${formatAngka(data.totalBaris)} baris`
+      `Total keseluruhan: ${rekapGabungan.length} siswa • ${formatAngka(data.totalSetoran)} setoran • ${formatAngka(data.totalBaris)} baris`
     )
     lines.push('')
     lines.push("_Dikirim dari aplikasi Program Qur'an Mandiri_")
@@ -209,7 +270,7 @@ export default function RekapanBulananView({
     return text.length > 3000
       ? text.slice(0, 3000) + '\n\n…(data dipotong, cetak PDF untuk laporan lengkap)'
       : text
-  }, [data, filterRingkas])
+  }, [data, filterRingkas, rekapGabungan])
 
   const waText = useMemo(() => buildWAText(), [buildWAText])
 
@@ -286,12 +347,12 @@ export default function RekapanBulananView({
             </Button>
           </EmptyState>
         </Card>
-      ) : !data || data.rekap.length === 0 ? (
+      ) : !data || rekapGabungan.length === 0 ? (
         <Card className="mt-4 gap-0 py-0 print:hidden">
           <EmptyState
             icon={<Inbox />}
-            title={`Belum ada setoran pada ${data?.labelBulan ?? 'bulan ini'}`}
-            description="Pilih bulan lain, atau catat setoran melalui menu Input Setoran / tombol Catat Setoran."
+            title={`Belum ada setoran & absensi pada ${data?.labelBulan ?? 'bulan ini'}`}
+            description="Pilih bulan lain, catat setoran melalui menu Input Setoran, atau lakukan Absen Siswa."
           />
         </Card>
       ) : (
@@ -300,7 +361,7 @@ export default function RekapanBulananView({
           <div className="mt-4 flex flex-col gap-2 print:hidden sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground">
-                {data.jumlahSiswa} siswa
+                {rekapGabungan.length} siswa
               </span>
               <span className="rounded-lg bg-secondary px-2.5 py-1.5 text-xs font-semibold text-secondary-foreground">
                 Total: {formatAngka(data.totalSetoran)} setoran
@@ -343,10 +404,16 @@ export default function RekapanBulananView({
                   <TableHead className="min-w-[190px]">Setoran Akhir Bulan</TableHead>
                   <TableHead className="w-16 text-right">Setoran</TableHead>
                   <TableHead className="w-24 text-right">Jumlah Baris</TableHead>
+                  <TableHead
+                    className="w-24 text-center"
+                    title="Absen halaqoh bulan ini: Hadir/Sakit/Izin/Alpa"
+                  >
+                    Absensi
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.rekap.map((r, i) => (
+                {rekapGabungan.map((r, i) => (
                   <TableRow key={r.siswaId}>
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell className="font-mono text-sm">{r.nis}</TableCell>
@@ -379,6 +446,24 @@ export default function RekapanBulananView({
                     <TableCell className="text-right font-semibold tabular-nums">
                       {formatAngka(r.totalBaris)}
                     </TableCell>
+                    <TableCell
+                      className="text-center tabular-nums"
+                      title={r.absensi ? 'Hadir/Sakit/Izin/Alpa' : undefined}
+                    >
+                      {r.absensi ? (
+                        <span
+                          className={
+                            r.absensi.alpa > 0 || r.absensi.sakit + r.absensi.izin > 0
+                              ? 'font-medium text-amber-600'
+                              : 'text-emerald-600'
+                          }
+                        >
+                          {absensiSel(r.absensi)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {/* Baris total: jumlah setoran & jumlah baris dijumlahkan */}
@@ -390,14 +475,18 @@ export default function RekapanBulananView({
                   <TableCell className="text-right tabular-nums">
                     {formatAngka(data.totalBaris)}
                   </TableCell>
+                  <TableCell />
                 </TableRow>
               </TableBody>
             </Table>
+            <p className="px-4 py-2 text-xs text-muted-foreground">
+              Absensi = hasil Absen Siswa halaqoh bulan terpilih, format Hadir/Sakit/Izin/Alpa.
+            </p>
           </Card>
 
           {/* Kartu mobile */}
           <div className="mt-2 grid gap-3 md:hidden print:hidden">
-            {data.rekap.map((r, i) => (
+            {rekapGabungan.map((r, i) => (
               <Card key={r.siswaId} className="gap-0 p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -433,6 +522,12 @@ export default function RekapanBulananView({
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Badge variant="secondary">{r.jumlahSetoran} setoran</Badge>
                   <Badge variant="outline">{formatAngka(r.totalBaris)} baris</Badge>
+                  {r.absensi && (
+                    <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                      Absensi: {r.absensi.hadir} hadir • {r.absensi.sakit} sakit • {r.absensi.izin} izin •{' '}
+                      {r.absensi.alpa} alpa
+                    </Badge>
+                  )}
                 </div>
               </Card>
             ))}
@@ -440,7 +535,7 @@ export default function RekapanBulananView({
             <Card className="gap-0 bg-muted/50 p-4">
               <p className="text-sm font-semibold">Total keseluruhan</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {data.jumlahSiswa} siswa • {formatAngka(data.totalSetoran)} setoran •{' '}
+                {rekapGabungan.length} siswa • {formatAngka(data.totalSetoran)} setoran •{' '}
                 {formatAngka(data.totalBaris)} baris
               </p>
             </Card>
@@ -466,7 +561,7 @@ export default function RekapanBulananView({
           {/* Ringkasan */}
           <p className="mt-3 text-[11px]">
             <span className="font-semibold">
-              Total: {data.jumlahSiswa} siswa • {formatAngka(data.totalSetoran)} setoran •{' '}
+              Total: {rekapGabungan.length} siswa • {formatAngka(data.totalSetoran)} setoran •{' '}
               {formatAngka(data.totalBaris)} baris
             </span>
           </p>
@@ -484,10 +579,11 @@ export default function RekapanBulananView({
                 <th>Setoran Akhir Bulan</th>
                 <th className="w-12">Set.</th>
                 <th className="w-14">Baris</th>
+                <th className="w-16">Absensi</th>
               </tr>
             </thead>
             <tbody>
-              {data.rekap.map((r, i) => (
+              {rekapGabungan.map((r, i) => (
                 <tr key={r.siswaId}>
                   <td>{i + 1}</td>
                   <td>{r.nis}</td>
@@ -524,6 +620,7 @@ export default function RekapanBulananView({
                   </td>
                   <td>{r.jumlahSetoran}</td>
                   <td>{formatAngka(r.totalBaris)}</td>
+                  <td className="text-center">{r.absensi ? absensiSel(r.absensi) : '-'}</td>
                 </tr>
               ))}
               {/* Baris total */}
@@ -533,9 +630,13 @@ export default function RekapanBulananView({
                 </td>
                 <td className="font-semibold">{formatAngka(data.totalSetoran)}</td>
                 <td className="font-semibold">{formatAngka(data.totalBaris)}</td>
+                <td />
               </tr>
             </tbody>
           </table>
+          <p className="mt-1 text-[9px] text-gray-500">
+            Absensi = hasil Absen Siswa halaqoh bulan terpilih, format Hadir/Sakit/Izin/Alpa.
+          </p>
 
           {/* Tanda tangan */}
           <div className="mt-8 flex justify-end">

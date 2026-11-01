@@ -13,6 +13,7 @@ import {
   BookOpenText,
   CalendarClock,
   Camera,
+  ClipboardCheck,
   ClipboardList,
   FolderOpen,
   GraduationCap,
@@ -37,6 +38,7 @@ import RingkasanSection from '@/components/dashboard/ringkasan-section'
 import RekapanSection from '@/components/dashboard/rekapan-section'
 import InputSetoranSection from '@/components/dashboard/input-setoran-section'
 import AbsensiSection from '@/components/dashboard/absensi-section'
+import AbsenSiswaSection from '@/components/dashboard/absen-siswa-section'
 import ProgramSection from '@/components/dashboard/program-section'
 import MusyrifSection from '@/components/dashboard/musyrif-section'
 import HalaqohSection from '@/components/dashboard/halaqoh-section'
@@ -50,6 +52,7 @@ export type SectionKey =
   | 'ringkasan'
   | 'input-setoran'
   | 'absensi'
+  | 'absensi-siswa'
   | 'program'
   | 'musyrif'
   | 'halaqoh'
@@ -77,6 +80,8 @@ const MENU: MenuItem[] = [
   { key: 'ringkasan', label: 'Ringkasan', shortLabel: 'Ringkasan', icon: LayoutDashboard, primary: true },
   // Absen tepat di bawah Ringkasan (permintaan: menu absen musyrif berada di bawah ringkasan)
   { key: 'absensi', label: 'Absen', shortLabel: 'Absen', icon: Camera, musyrifOnly: true, primary: true },
+  // Absen Siswa tepat di bawah Absen (permintaan: menu absen siswa berada di bawah menu Absen)
+  { key: 'absensi-siswa', label: 'Absen Siswa', shortLabel: 'Absen Siswa', icon: ClipboardCheck, musyrifOnly: true },
   { key: 'input-setoran', label: 'Input Setoran', shortLabel: 'Setoran', icon: PenLine, musyrifOnly: true, primary: true },
   { key: 'program', label: 'Program Kelas', shortLabel: 'Program', icon: FolderOpen, adminOnly: true, primary: true },
   { key: 'musyrif', label: 'Data Musyrif', shortLabel: 'Musyrif', icon: IdCard, adminOnly: true },
@@ -426,6 +431,7 @@ export default function Dashboard({
           )}
           {section === 'input-setoran' && <InputSetoranSection user={user} />}
           {section === 'absensi' && <AbsensiSection user={user} />}
+          {section === 'absensi-siswa' && <AbsenSiswaSection />}
           {section === 'rekapan' && <RekapanSection key={`rekapan-${dataTick}`} user={user} />}
           {section === 'program' && <ProgramSection />}
           {section === 'musyrif' && <MusyrifSection />}

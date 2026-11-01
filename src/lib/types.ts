@@ -166,6 +166,8 @@ export interface RekapBulananSiswa {
   awal: SetoranItem | null
   /** Setoran AKHIR bulan: catatan terakhir bulan terpilih. */
   akhir: SetoranItem | null
+  /** Rekap kehadiran absen halaqoh bulan itu (null = belum ada data absensi). */
+  absensi?: { hadir: number; sakit: number; izin: number; alpa: number } | null
 }
 
 /** Respons GET /api/setoran/rekap-bulanan. */
@@ -243,4 +245,64 @@ export interface RekapAbsenPeriod {
   sampai: string
   /** Jumlah record absensi pada periode ini. */
   jumlah: number
+}
+
+// ===== Absensi siswa (halaqoh) =====
+
+/** Status kehadiran siswa pada absen halaqoh harian. */
+export const STATUS_KEHADIRAN = ['HADIR', 'SAKIT', 'IZIN', 'ALPA'] as const
+export type StatusKehadiran = (typeof STATUS_KEHADIRAN)[number]
+
+/** Kartu halaqoh pada menu Absen Siswa: rekap absen hari ini per halaqoh binaan. */
+export interface AbsensiSiswaStatusItem {
+  id: string
+  nama: string
+  programNama: string
+  jumlahSiswa: number
+  /** Jumlah siswa yang sudah diabsen hari ini. */
+  jumlahAbsen: number
+}
+
+/** Respons GET /api/absensi-siswa/status. */
+export interface AbsensiSiswaStatusData {
+  tanggalServer: string
+  items: AbsensiSiswaStatusItem[]
+}
+
+/** Baris siswa + absennya pada tanggal tertentu (null = belum diabsen). */
+export interface AbsensiSiswaSiswaRow {
+  id: string
+  nis: string
+  nama: string
+  kelas: string
+  absen: { status: StatusKehadiran; keterangan: string | null } | null
+}
+
+/** Respons GET /api/absensi-siswa (roster absen satu halaqoh). */
+export interface AbsensiSiswaData {
+  tanggalServer: string
+  tanggal: string
+  halaqoh: { id: string; nama: string; programNama: string }
+  siswa: AbsensiSiswaSiswaRow[]
+}
+
+/** Rekap bulanan kehadiran satu siswa (untuk kolom absensi Rekapan Bulanan). */
+export interface RekapAbsensiSiswaRow {
+  siswaId: string
+  nis: string
+  nama: string
+  kelas: string
+  halaqohNama: string | null
+  programNama: string
+  hadir: number
+  sakit: number
+  izin: number
+  alpa: number
+}
+
+/** Respons GET /api/absensi-siswa/rekap. */
+export interface RekapAbsensiSiswaData {
+  bulan: number
+  tahun: number
+  items: RekapAbsensiSiswaRow[]
 }

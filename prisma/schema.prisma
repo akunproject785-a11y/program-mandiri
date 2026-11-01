@@ -57,6 +57,7 @@ model Halaqoh {
   program   Program          @relation(fields: [programId], references: [id])
   musyrif   HalaqohMusyrif[]
   siswa     Siswa[]
+  absensi   AbsensiSiswa[]
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 }
@@ -71,18 +72,19 @@ model HalaqohMusyrif {
 }
 
 model Siswa {
-  id        String    @id @default(cuid())
-  nis       String    @unique
+  id        String         @id @default(cuid())
+  nis       String         @unique
   kelas     String
   nama      String
   programId String
-  program   Program   @relation(fields: [programId], references: [id])
+  program   Program        @relation(fields: [programId], references: [id])
   halaqohId String?
-  halaqoh   Halaqoh?  @relation(fields: [halaqohId], references: [id])
+  halaqoh   Halaqoh?       @relation(fields: [halaqohId], references: [id])
   fotoUrl   String?
   setoran   Setoran[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  absensi   AbsensiSiswa[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 }
 
 model Setoran {
@@ -123,9 +125,9 @@ model Setting {
 /**
  * Absensi harian musyrif dengan foto selfie.
  * - tanggal (string "YYYY-MM-DD", zona WIB) unik per musyrif — absen ulang pada
- *   hari yang sama menimpa record lama dan mengembalikan status ke PENDING.
+ * hari yang sama menimpa record lama dan mengembalikan status ke PENDING.
  * - fotoUrl hanya menyimpan URL public Supabase Storage (bucket foto-absensi);
- *   berkas foto dikompres di sisi klien agar ringan.
+ * berkas foto dikompres di sisi klien agar ringan.
  */
 model AbsensiMusyrif {
   id           String    @id @default(cuid())
@@ -145,4 +147,30 @@ model AbsensiMusyrif {
   @@unique([musyrifId, tanggal])
   @@index([tanggal])
   @@index([status])
+}
+
+/**
+ * Absensi kehadiran harian SISWA per halaqoh, dicatat musyrif pembina.
+ * - Satu record per siswa per tanggal (WIB); simpan ulang menimpa (koreksi).
+ * - status: HADIR | SAKIT | IZIN | ALPA (tanpa foto — cukup status + keterangan).
+ * - halaqohId = snapshot halaqoh saat absen (siswa bisa pindah halaqoh kemudian).
+ * - dicatatOleh/Id = musyrif pencatat (tanpa FK, ikut pola diputusOleh di atas).
+ */
+model AbsensiSiswa {
+  id            String   @id @default(cuid())
+  siswaId       String
+  siswa         Siswa    @relation(fields: [siswaId], references: [id], onDelete: Cascade)
+  halaqohId     String?
+  halaqoh       Halaqoh? @relation(fields: [halaqohId], references: [id])
+  tanggal       String
+  status        String // HADIR | SAKIT | IZIN | ALPA
+  keterangan    String?
+  dicatatOleh   String?
+  dicatatOlehId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([siswaId, tanggal])
+  @@index([halaqohId, tanggal])
+  @@index([tanggal])
 }
