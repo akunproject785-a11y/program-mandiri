@@ -208,7 +208,8 @@ function absenWALines(
   if (from && from === to) {
     const r = recs[0]
     const ket = r.keterangan ? ` — ${r.keterangan}` : ''
-    return `   • Absen ${formatTanggalPendek(from)}: ${r.status}${ket}`
+    // Harian: tanggal sudah pada header periode — cukup statusnya saja.
+    return `   • Absen: ${r.status}${ket}`
   }
   const hitung: Record<StatusKehadiran, number> = { HADIR: 0, SAKIT: 0, IZIN: 0, ALPA: 0 }
   for (const r of recs) hitung[r.status] += 1
@@ -370,9 +371,11 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
   /** Ringkasan filter aktif untuk header laporan cetak & teks WA. */
   const filterRingkas = useMemo(() => {
     const periode =
-      filters.from || filters.to
-        ? `${filters.from ? formatTanggalIndo(filters.from) : 'awal'} s.d. ${filters.to ? formatTanggalIndo(filters.to) : 'sekarang'}`
-        : 'Semua tanggal'
+      filters.from && filters.to && filters.from === filters.to
+        ? formatTanggalIndo(filters.from)
+        : filters.from || filters.to
+          ? `${filters.from ? formatTanggalIndo(filters.from) : 'awal'} s.d. ${filters.to ? formatTanggalIndo(filters.to) : 'sekarang'}`
+          : 'Semua tanggal'
     const parts: string[] = [`Periode: ${periode}`]
     if (filters.halaqohId !== ALL)
       parts.push(`Halaqoh: ${halaqohList.find((h) => h.id === filters.halaqohId)?.nama ?? '-'}`)
@@ -466,17 +469,37 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
     if (universe.length === 0) {
       lines.push('Tidak ada siswa pada lingkup filter ini.')
     }
+    // Ringkasan kehadiran untuk baris Total (hanya jenis yang >0 yang ditampilkan).
+    const ringkas: string[] = []
+    const hitungTotal: Record<StatusKehadiran, number> = { HADIR: 0, SAKIT: 0, IZIN: 0, ALPA: 0 }
+    for (const a of absenHarian) hitungTotal[a.status] += 1
+    if (hitungTotal.HADIR > 0) ringkas.push(`${hitungTotal.HADIR} hadir`)
+    if (hitungTotal.SAKIT > 0) ringkas.push(`${hitungTotal.SAKIT} sakit`)
+    if (hitungTotal.IZIN > 0) ringkas.push(`${hitungTotal.IZIN} izin`)
+    if (hitungTotal.ALPA > 0) ringkas.push(`${hitungTotal.ALPA} alpa`)
+    const harian = Boolean(filters.from && filters.from === filters.to)
     let totalSetoran = 0
     universe.forEach((s, i) => {
       const recsAbsen = absenBySiswa.get(s.id) ?? []
       const recsSetoran = setoranBySiswa.get(s.id) ?? []
       totalSetoran += recsSetoran.length
-      lines.push(
-        `${i + 1}. ${s.nama} — NIS ${s.nis}${s.halaqohNama ? ` (${s.halaqohNama})` : ''}`
-      )
+      // Ringkas tanpa NIS; halaqoh hanya ditambahkan bila share mencakup semua
+      // halaqoh (tanpa filter) agar siswa tetap bisa dikenali pembaca grup.
+      const labelHalaqoh =
+        filters.halaqohId === ALL && s.halaqohNama ? ` (${s.halaqohNama})` : ''
+      lines.push(`${i + 1}. ${s.nama}${labelHalaqoh}`)
       lines.push(absenWALines(recsAbsen, filters.from, filters.to))
       if (recsSetoran.length === 0) {
         lines.push('   • Setoran: belum setoran')
+      } else if (harian) {
+        // Harian: tanggal sudah pada header periode — langsung isi setoran saja.
+        const isi = recsSetoran
+          .map((item) => {
+            const nilai = nilaiPendek(item)
+            return `${describeSetoran(item)}${nilai ? ` — Nilai ${nilai}` : ''}`
+          })
+          .join('; ')
+        lines.push(`   • Setoran: ${isi}`)
       } else {
         lines.push(`   • Setoran: ${recsSetoran.length} kali`)
         recsSetoran.forEach((item) => {
@@ -488,7 +511,9 @@ export default function RekapanSection({ user }: { user: UserInfo }) {
       }
     })
     lines.push('')
-    lines.push(`Total: ${universe.length} siswa • ${totalSetoran} setoran`)
+    lines.push(
+      `Total: ${universe.length} siswa • ${totalSetoran} setoran${ringkas.length > 0 ? ` • ${ringkas.join(', ')}` : ''}`
+    )
     lines.push('')
     lines.push("_Dikirim dari aplikasi Program Qur'an Mandiri_")
     const text = lines.join('\n')
