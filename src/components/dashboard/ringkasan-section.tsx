@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   AlertTriangle,
+  BellRing,
   CalendarCheck,
   Camera,
   ClipboardList,
@@ -19,11 +20,12 @@ import {
   IdCard,
   Inbox,
   Network,
+  UserCheck,
   Users,
 } from 'lucide-react'
 import { api } from '@/lib/client'
 import { describeSetoran, formatTanggalIndo } from '@/lib/format'
-import { type SummaryData, type UserInfo } from '@/lib/types'
+import { type AbsensiMusyrifItem, type SummaryData, type UserInfo } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -38,14 +40,16 @@ export default function RingkasanSection({
   onNavigate,
 }: {
   user: UserInfo
-  /** Dipakai CTA musyrif untuk melompat ke menu Absen. */
-  onNavigate?: (section: 'absensi') => void
+  /** Dipakai CTA musyrif (→ Absen) dan notifikasi admin (→ Kelola Absen). */
+  onNavigate?: (section: 'absensi' | 'kelola-absensi') => void
 }) {
   const isMusyrif = user.role === 'musyrif'
   const [summary, setSummary] = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  /** Admin: daftar absen musyrif berstatus PENDING (untuk notifikasi ACC). */
+  const [pendingAbsen, setPendingAbsen] = useState<AbsensiMusyrifItem[]>([])
 
   useEffect(() => {
     let mounted = true
@@ -63,6 +67,22 @@ export default function RingkasanSection({
       mounted = false
     }
   }, [refreshKey])
+
+  // Admin: cek absen yang masih menunggu ACC (gagal = abaikan, jangan blok ringkasan).
+  useEffect(() => {
+    if (isMusyrif) return
+    let mounted = true
+    api<{ items: AbsensiMusyrifItem[] }>('/api/absensi/admin?status=PENDING')
+      .then((data) => {
+        if (mounted) setPendingAbsen(data.items)
+      })
+      .catch(() => {
+        if (mounted) setPendingAbsen([])
+      })
+    return () => {
+      mounted = false
+    }
+  }, [isMusyrif, refreshKey])
 
   const retry = useCallback(() => {
     setError(null)
@@ -101,6 +121,48 @@ export default function RingkasanSection({
             </Button>
           </div>
         </Card>
+      ) : null}
+
+      {/* Notifikasi admin: absen musyrif yang masih menunggu ACC */}
+      {!isMusyrif && pendingAbsen.length > 0 ? (
+        (() => {
+          const namaUnik = Array.from(
+            new Set(pendingAbsen.map((a) => a.musyrifNama).filter(Boolean))
+          )
+          const labelNama =
+            namaUnik.length > 0
+              ? namaUnik.slice(0, 3).join(', ') +
+                (namaUnik.length > 3 ? ` +${namaUnik.length - 3} musyrif lainnya` : '')
+              : null
+          return (
+            <Card className="mt-4 gap-0 border-amber-500/40 bg-amber-500/10 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-500/20">
+                    <BellRing className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                      {pendingAbsen.length} absen musyrif menunggu ACC
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {labelNama
+                        ? `Dari: ${labelNama}. Periksa foto selfie lalu ACC atau tolak.`
+                        : 'Periksa foto selfie lalu ACC atau tolak.'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => onNavigate?.('kelola-absensi')}
+                  className="min-h-11 w-fit shrink-0 sm:min-h-9"
+                >
+                  <UserCheck className="h-4 w-4" aria-hidden />
+                  Kelola Absen
+                </Button>
+              </div>
+            </Card>
+          )
+        })()
       ) : null}
 
       {loading ? (

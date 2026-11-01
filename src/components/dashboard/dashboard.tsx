@@ -420,7 +420,9 @@ export default function Dashboard({
       <main className="lg:pl-64 print:!pl-0">
         <div className="mx-auto max-w-6xl p-4 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-6 sm:pb-24 lg:p-8 lg:pb-8">
           {section === 'ringkasan' && (
-            <RingkasanSection key={`ringkasan-${dataTick}`} user={user} onNavigate={handleSelect} />
+            // Ikut keyed dgn absensiTick: notifikasi "absen menunggu ACC" di ringkasan
+            // admin ter-refresh otomatis saat musyrif baru mengirim absen.
+            <RingkasanSection key={`ringkasan-${dataTick}-${absensiTick}`} user={user} onNavigate={handleSelect} />
           )}
           {section === 'input-setoran' && <InputSetoranSection user={user} />}
           {section === 'absensi' && <AbsensiSection user={user} />}
