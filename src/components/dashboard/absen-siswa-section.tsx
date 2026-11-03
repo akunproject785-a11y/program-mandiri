@@ -9,6 +9,9 @@
  *   agar tidak muncul berulang di sesi yang sama.
  * - Roster absen: semua siswa default HADIR, ubah ke SAKIT/IZIN/ALPA bila perlu
  *   (+ keterangan). Simpan = upsert batch; absen ulang di hari sama mengoreksi.
+ * - Absen yang sudah tersimpan ditandai badge "Absen tersimpan" dan bisa
+ *   dibatalkan per siswa (tombol Batalkan → DELETE /api/absensi-siswa) — absen
+ *   mundur (backdate) bisa dikoreksi lewat pemilih tanggal pada roster.
  * - Data absensi ikut tampil di Rekapan Bulanan (menu Rekap Setoran).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -19,6 +22,7 @@ import {
   Inbox,
   RefreshCw,
   Send,
+  Undo2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
@@ -30,6 +34,16 @@ import {
   type AbsensiSiswaStatusItem,
   type StatusKehadiran,
 } from '@/lib/types'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -90,6 +104,8 @@ function BarisSiswa({
   kelas,
   status,
   keterangan,
+  punyaRecord,
+  onBatalkan,
   onStatus,
   onKeterangan,
 }: {
@@ -98,6 +114,9 @@ function BarisSiswa({
   kelas: string
   status: StatusKehadiran
   keterangan: string
+  /** Siswa punya record absen tersimpan pada tanggal roster (bisa dibatalkan). */
+  punyaRecord: boolean
+  onBatalkan: () => void
   onStatus: (s: StatusKehadiran) => void
   onKeterangan: (v: string) => void
 }) {
@@ -109,11 +128,30 @@ function BarisSiswa({
           <p className="text-xs text-muted-foreground">
             NIS {nis} • Kelas {kelas}
           </p>
+          {punyaRecord && (
+            <Badge
+              variant="outline"
+              className="mt-1 border-border bg-muted text-[10px] text-muted-foreground"
+            >
+              Absen tersimpan
+            </Badge>
+          )}
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {STATUS_KEHADIRAN.map((s) => (
             <StatusChip key={s} status={s} aktif={status === s} onPilih={() => onStatus(s)} />
           ))}
+          {punyaRecord && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onBatalkan}
+              className="min-h-9 px-2 text-xs text-destructive hover:text-destructive"
+              aria-label={`Batalkan absen tersimpan untuk ${nama}`}
+            >
+              <Undo2 className="h-3.5 w-3.5" /> Batalkan
+            </Button>
+          )}
         </div>
       </div>
       {status !== 'HADIR' && (
@@ -140,7 +178,15 @@ export default function AbsenSiswaSection() {
   const [roster, setRoster] = useState<AbsensiSiswaData | null>(null)
   const [rosterError, setRosterError] = useState<string | null>(null)
   const [entri, setEntri] = useState<Record<string, { status: StatusKehadiran; keterangan: string }>>({})
+  /** Siswa yang benar-benar punya record absen tersimpan pada tanggal roster. */
+  const [tersimpan, setTersimpan] = useState<Set<string>>(new Set())
   const [menyimpan, setMenyimpan] = useState(false)
+  /** Tanggal roster yang sedang dibuka (awal: hari ini WIB, ditetapkan server). */
+  const [tanggalRoster, setTanggalRoster] = useState('')
+
+  // Dialog konfirmasi pembatalan absen
+  const [batalTarget, setBatalTarget] = useState<{ siswaId: string; nama: string } | null>(null)
+  const [membatalkan, setMembatalkan] = useState(false)
 
   // Dialog notifikasi pengingat absen
   const [notif, setNotif] = useState<AbsensiSiswaStatusItem | null>(null)
@@ -161,28 +207,41 @@ export default function AbsenSiswaSection() {
     void muatStatus()
   }, [muatStatus])
 
-  const masukRoster = useCallback(async (h: AbsensiSiswaStatusItem) => {
-    setAktif(h)
+  const muatRoster = useCallback(async (halaqohId: string, tanggalParam?: string) => {
     setRoster(null)
     setRosterError(null)
     try {
+      const q = tanggalParam ? `&tanggal=${encodeURIComponent(tanggalParam)}` : ''
       const res = await api<AbsensiSiswaData>(
-        `/api/absensi-siswa?halaqohId=${encodeURIComponent(h.id)}`
+        `/api/absensi-siswa?halaqohId=${encodeURIComponent(halaqohId)}${q}`
       )
       setRoster(res)
+      setTanggalRoster(res.tanggal)
       // Default HADIR untuk siswa yang belum punya record pada tanggal tsb.
       const awal: Record<string, { status: StatusKehadiran; keterangan: string }> = {}
+      const saved = new Set<string>()
       for (const s of res.siswa) {
         awal[s.id] = {
           status: s.absen?.status ?? 'HADIR',
           keterangan: s.absen?.keterangan ?? '',
         }
+        if (s.absen) saved.add(s.id)
       }
       setEntri(awal)
+      setTersimpan(saved)
     } catch (e) {
       setRosterError(e instanceof Error ? e.message : 'Gagal memuat data siswa')
     }
   }, [])
+
+  const masukRoster = useCallback(
+    async (h: AbsensiSiswaStatusItem) => {
+      setAktif(h)
+      setTersimpan(new Set())
+      await muatRoster(h.id)
+    },
+    [muatRoster]
+  )
 
   /** Buka roster halaqoh — dengan notifikasi pengingat bila belum diabsen hari ini. */
   const bukaHalaqoh = useCallback(
@@ -260,6 +319,45 @@ export default function AbsenSiswaSection() {
     return c
   }, [roster, entri])
 
+  /** Ganti tanggal roster — memuat absensi tanggal itu juga (dukung koreksi backdate). */
+  const gantiTanggal = (v: string) => {
+    setTanggalRoster(v)
+    if (aktif && v) void muatRoster(aktif.id, v)
+  }
+
+  /** Hapus record absen siswa pada tanggal roster (setelah dialog konfirmasi). */
+  const konfirmasiBatalkan = async () => {
+    if (!batalTarget || !roster) return
+    const { siswaId, nama } = batalTarget
+    setMembatalkan(true)
+    try {
+      const res = await api<{ terhapus: number }>('/api/absensi-siswa', {
+        method: 'DELETE',
+        body: {
+          halaqohId: roster.halaqoh.id,
+          tanggal: roster.tanggal,
+          siswaIds: [siswaId],
+        },
+      })
+      if (res.terhapus > 0) {
+        toast.success(`Absen ${nama} (${formatTanggalIndo(roster.tanggal)}) dibatalkan`)
+      } else {
+        toast.info(`Absen ${nama} sudah tidak ada`)
+      }
+      setBatalTarget(null)
+      setTersimpan((prev) => {
+        const next = new Set(prev)
+        next.delete(siswaId)
+        return next
+      })
+      setEntri((prev) => ({ ...prev, [siswaId]: { status: 'HADIR', keterangan: '' } }))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal membatalkan absen')
+    } finally {
+      setMembatalkan(false)
+    }
+  }
+
   // ===== Render =====
   if (aktif) {
     return (
@@ -304,9 +402,18 @@ export default function AbsenSiswaSection() {
                   {s}: {rekapStatus[s]}
                 </Badge>
               ))}
-              <Button variant="ghost" size="sm" onClick={semuaHadir} className="ml-auto min-h-9">
-                <RefreshCw className="h-4 w-4" /> Tandai Semua Hadir
-              </Button>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <Input
+                  type="date"
+                  value={tanggalRoster}
+                  onChange={(e) => gantiTanggal(e.target.value)}
+                  className="min-h-9 w-auto"
+                  aria-label="Tanggal absen"
+                />
+                <Button variant="ghost" size="sm" onClick={semuaHadir} className="min-h-9">
+                  <RefreshCw className="h-4 w-4" /> Tandai Semua Hadir
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -318,6 +425,7 @@ export default function AbsenSiswaSection() {
                   kelas={s.kelas}
                   status={entri[s.id]?.status ?? 'HADIR'}
                   keterangan={entri[s.id]?.keterangan ?? ''}
+                  punyaRecord={tersimpan.has(s.id)}
                   onStatus={(st) =>
                     setEntri((prev) => ({
                       ...prev,
@@ -330,6 +438,7 @@ export default function AbsenSiswaSection() {
                       [s.id]: { status: prev[s.id]?.status ?? 'HADIR', keterangan: v },
                     }))
                   }
+                  onBatalkan={() => setBatalTarget({ siswaId: s.id, nama: s.nama })}
                 />
               ))}
             </div>
@@ -340,6 +449,34 @@ export default function AbsenSiswaSection() {
                 {menyimpan ? 'Menyimpan…' : 'Simpan Absensi'}
               </Button>
             </div>
+
+            {/* ===== Dialog konfirmasi batalkan absen ===== */}
+            <AlertDialog open={batalTarget !== null} onOpenChange={(o) => !o && setBatalTarget(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Batalkan absen {batalTarget?.nama}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Record absen {batalTarget?.nama} pada{' '}
+                    {roster ? formatTanggalIndo(roster.tanggal) : 'tanggal terpilih'} beserta
+                    status dan keterangannya akan dihapus. Form input setoran yang mensyaratkan
+                    absen tanggal ini akan terblokir lagi sampai siswa diabsen ulang.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={membatalkan}>Tidak, Kembali</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={(e) => {
+                      e.preventDefault()
+                      void konfirmasiBatalkan()
+                    }}
+                    disabled={membatalkan}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {membatalkan ? 'Membatalkan…' : 'Ya, Batalkan Absen'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </>
         )}
       </div>

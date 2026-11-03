@@ -207,3 +207,71 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Terjadi kesalahan server' }, { status: 500 })
   }
 }
+
+/**
+ * DELETE /api/absensi-siswa — body { halaqohId, tanggal?, siswaIds: [...] }.
+ * Batalkan (hapus) absensi siswa pada tanggal tertentu, mis. absen tercatat
+ * keliru. Siswa harus anggota halaqoh binaan musyrif (cek keanggotaan saat
+ * ini, konsisten dengan GET/POST).
+ */
+export async function DELETE(request: Request) {
+  try {
+    const auth = await requireAuth()
+    if (auth.response) return auth.response
+    const guard = guardMusyrif(auth.user.role, auth.user.musyrifId)
+    if (guard) return guard
+    const musyrifId = auth.user.musyrifId as string
+
+    let body: { halaqohId?: unknown; tanggal?: unknown; siswaIds?: unknown }
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Format permintaan tidak valid' }, { status: 400 })
+    }
+
+    const halaqohId = toStrOrNull(body.halaqohId)
+    const tanggal = tanggalValidAtauHariIni(toStrOrNull(body.tanggal))
+    if (!halaqohId) {
+      return NextResponse.json({ error: 'halaqohId wajib diisi' }, { status: 400 })
+    }
+    if (!tanggal) {
+      return NextResponse.json({ error: 'Tanggal tidak valid' }, { status: 400 })
+    }
+    const ids = Array.isArray(body.siswaIds)
+      ? (body.siswaIds as unknown[]).map(toStrOrNull).filter((v): v is string => Boolean(v))
+      : []
+    const unik = Array.from(new Set(ids))
+    if (unik.length === 0) {
+      return NextResponse.json({ error: 'Tidak ada siswa yang dipilih' }, { status: 400 })
+    }
+    if (unik.length > 200) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak siswa dalam satu permintaan' },
+        { status: 400 }
+      )
+    }
+
+    const scopeIds = await getHalaqohIdsForMusyrif(musyrifId)
+    if (!scopeIds.includes(halaqohId)) {
+      return NextResponse.json({ error: 'Halaqoh bukan binaan Anda' }, { status: 403 })
+    }
+    const anggota = await db.siswa.count({
+      where: { id: { in: unik }, halaqohId },
+    })
+    if (anggota !== unik.length) {
+      return NextResponse.json(
+        { error: 'Ada siswa yang bukan anggota halaqoh ini' },
+        { status: 400 }
+      )
+    }
+
+    const hapus = await db.absensiSiswa.deleteMany({
+      where: { siswaId: { in: unik }, tanggal },
+    })
+
+    return NextResponse.json({ terhapus: hapus.count, tanggal })
+  } catch (e) {
+    console.error('[absensi-siswa DELETE]', e)
+    return NextResponse.json({ error: 'Terjadi kesalahan server' }, { status: 500 })
+  }
+}
