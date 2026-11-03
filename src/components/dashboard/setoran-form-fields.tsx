@@ -15,19 +15,27 @@
  *  - `onSuccess` dipanggil setelah setoran berhasil disimpan (toast sudah
  *    ditampilkan di sini). `onCancel` opsional — tombol Batal hanya muncul
  *    bila disediakan.
+ *  - `wajibAbsen` (mode BUAT musyrif): siswa wajib punya absensi pada tanggal
+ *    setoran sebelum tombol simpan aktif; absen cepat tersedia di dalam form.
  */
-import { useMemo, useState, type FormEvent } from 'react'
-import { Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
-import { hariFromTanggal, todayISO } from '@/lib/format'
+import {
+  formatTanggalIndo,
+  hariFromTanggal,
+  todayISO,
+} from '@/lib/format'
 import { getSurahsByJuz, JUZ_OPTIONS_C_D } from '@/lib/quran-data'
 import {
   MENU_SETORAN_C,
   MENU_SETORAN_D,
   NILAI_OPTIONS,
+  STATUS_KEHADIRAN,
   type SetoranItem,
   type SiswaItem,
+  type StatusKehadiran,
   type TipeInputan,
 } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
@@ -164,6 +172,7 @@ export default function SetoranFormFields({
   onSuccess,
   onCancel,
   submitLabel,
+  wajibAbsen = false,
 }: {
   /** Siswa target (mode BUAT). */
   siswa?: SiswaItem
@@ -172,14 +181,75 @@ export default function SetoranFormFields({
   onSuccess: () => void
   onCancel?: () => void
   submitLabel?: string
+  /** Mode BUAT musyrif: siswa wajib diabsen pada tanggal setoran sebelum simpan. */
+  wajibAbsen?: boolean
 }) {
   const isEdit = Boolean(initial)
   const tipe: TipeInputan = initial?.tipe ?? siswa?.tipeInputan ?? 'A'
   const siswaId = siswa?.id
+  const halaqohId = siswa?.halaqohId ?? null
   const [form, setForm] = useState<FormState>(() =>
     initial ? createFormFromSetoran(initial) : createInitialForm()
   )
   const [submitting, setSubmitting] = useState(false)
+
+  // ===== Gate absen (mode BUAT musyrif): siswa harus diabsen dulu =====
+  // absenStatus: undefined = sedang dicek, null = belum diabsen, objek = sudah.
+  const perluCekAbsen = Boolean(!isEdit && wajibAbsen && siswaId && halaqohId && form.tanggal)
+  const [absenStatus, setAbsenStatus] = useState<
+    { status: StatusKehadiran; keterangan: string | null } | null | undefined
+  >(undefined)
+  const [absenCekError, setAbsenCekError] = useState<string | null>(null)
+  const [absenSaving, setAbsenSaving] = useState<StatusKehadiran | null>(null)
+  const [absenCekKey, setAbsenCekKey] = useState(0)
+
+  useEffect(() => {
+    if (!perluCekAbsen || !halaqohId || !siswaId) return
+    let mounted = true
+    setAbsenStatus(undefined)
+    setAbsenCekError(null)
+    api<{ siswa: Array<{ id: string; absen: { status: StatusKehadiran; keterangan: string | null } | null }> }>(
+      `/api/absensi-siswa?halaqohId=${encodeURIComponent(halaqohId)}&tanggal=${encodeURIComponent(form.tanggal)}`
+    )
+      .then((d) => {
+        if (!mounted) return
+        setAbsenStatus(d.siswa.find((s) => s.id === siswaId)?.absen ?? null)
+      })
+      .catch(() => {
+        if (mounted) setAbsenCekError('Gagal memeriksa status absen.')
+      })
+    return () => {
+      mounted = false
+    }
+  }, [perluCekAbsen, halaqohId, siswaId, form.tanggal, absenCekKey])
+
+  const absenCepat = async (status: StatusKehadiran) => {
+    if (!halaqohId || !siswaId || !form.tanggal) return
+    setAbsenSaving(status)
+    try {
+      await api('/api/absensi-siswa', {
+        method: 'POST',
+        body: {
+          halaqohId,
+          tanggal: form.tanggal,
+          entries: [{ siswaId, status }],
+        },
+      })
+      toast.success(`${siswa?.nama ?? 'Siswa'} diabsen: ${status}`)
+      setAbsenCekKey((k) => k + 1)
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Gagal mengabsen siswa. Silakan coba lagi.'
+      )
+    } finally {
+      setAbsenSaving(null)
+    }
+  }
+
+  // Simpan diblokir selama status absen belum diketahui pasti ada
+  // (belum diabsen, atau masih memeriksa). Gagal cek = fail-open agar tidak mengunci.
+  const absenGate =
+    perluCekAbsen && !absenCekError && (absenStatus === undefined || absenStatus === null)
 
   // Daftar surat mengikuti juz yang dipilih (tipe B dan C/D).
   const surahsB = useMemo(
@@ -205,6 +275,12 @@ export default function SetoranFormFields({
     }
     if (!form.tanggal) {
       toast.error('Tanggal setoran wajib diisi.')
+      return
+    }
+    if (absenGate) {
+      toast.error(
+        'Siswa belum diabsen. Absen siswa terlebih dahulu sebelum mencatat setoran.'
+      )
       return
     }
 
@@ -332,6 +408,75 @@ export default function SetoranFormFields({
           />
         </div>
       </Field>
+
+      {/* ===== Gate absen — musyrif wajib mengabsen siswa dulu (mode BUAT) ===== */}
+      {perluCekAbsen ? (
+        <div
+          aria-live="polite"
+          className="rounded-md border p-3 text-sm"
+          role="status"
+        >
+          {absenCekError ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="text-muted-foreground">{absenCekError}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-9"
+                onClick={() => setAbsenCekKey((k) => k + 1)}
+              >
+                Coba Lagi
+              </Button>
+            </div>
+          ) : absenStatus === undefined ? (
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Memeriksa absen siswa…
+            </p>
+          ) : absenStatus === null ? (
+            <div className="space-y-2.5">
+              <p className="flex items-start gap-2 font-medium text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>
+                  Siswa belum diabsen pada {hari.toLowerCase()}, {formatTanggalIndo(form.tanggal)}.
+                  Absen siswa terlebih dahulu sebelum mencatat setoran.
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-2" aria-label="Absen cepat">
+                {STATUS_KEHADIRAN.map((s) => (
+                  <Button
+                    key={s}
+                    type="button"
+                    variant={s === 'HADIR' ? 'default' : 'outline'}
+                    size="sm"
+                    className="min-h-10"
+                    disabled={absenSaving !== null || submitting}
+                    onClick={() => absenCepat(s)}
+                  >
+                    {absenSaving === s ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    ) : null}
+                    {s}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Tersimpan sebagai absen hari {hari.toLowerCase()}, {formatTanggalIndo(form.tanggal)} — keterangan dapat dilengkapi di menu Absen.
+              </p>
+            </div>
+          ) : (
+            <p className="flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+              <span>
+                Sudah diabsen: {absenStatus.status}
+                {absenStatus.keterangan ? ` — ${absenStatus.keterangan}` : ''}
+              </span>
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {/* ===== Type A — Tahsin Anaba ===== */}
       {tipe === 'A' ? (
@@ -662,9 +807,14 @@ export default function SetoranFormFields({
             Batal
           </Button>
         ) : null}
-        <Button type="submit" disabled={submitting} className="min-h-11 sm:min-h-9">
+        <Button
+          type="submit"
+          disabled={submitting || absenGate}
+          title={absenGate ? 'Absen siswa terlebih dahulu' : undefined}
+          className="min-h-11 sm:min-h-9"
+        >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-          {submitLabel ?? (isEdit ? 'Simpan Perubahan' : 'Simpan Setoran')}
+          {absenGate ? 'Absen Siswa Dulu' : submitLabel ?? (isEdit ? 'Simpan Perubahan' : 'Simpan Setoran')}
         </Button>
       </div>
     </form>

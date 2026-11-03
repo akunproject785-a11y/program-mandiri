@@ -163,10 +163,11 @@ function PopupBody({
         onDelete={(item) => setDeleteTarget(item)}
       />
 
-      {/* Form dinamis sesuai tipe program siswa */}
+      {/* Form dinamis sesuai tipe program siswa — musyrif wajib absen dulu */}
       <SetoranFormFields
         key={siswa.id}
         siswa={siswa}
+        wajibAbsen={user.role === 'musyrif'}
         onSuccess={() => {
           onSaved()
           onOpenChange(false)
