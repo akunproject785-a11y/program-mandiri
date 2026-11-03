@@ -8,7 +8,7 @@
  *   "Lainnya" yang muncul dari bawah).
  * Tidak melakukan fetch apa pun di sini.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   BookOpenText,
   CalendarClock,
@@ -29,8 +29,9 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { api } from '@/lib/client'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import type { UserInfo } from '@/lib/types'
+import type { HalaqohSayaItem, UserInfo } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -325,12 +326,15 @@ export default function Dashboard({
 }) {
   const [section, setSection] = useState<SectionKey>('ringkasan')
 
-  // Siklus popup Absen Awal (selfie musyrif): 'memeriksa' → 'terbuka' | 'selesai'.
-  // Popup pengingat halaqoh belum diabsen MENUNGGU status 'selesai' agar dua
-  // popup tidak pernah tampil menumpuk saat keduanya perlu muncul.
-  const [absenAwalStatus, setAbsenAwalStatus] = useState<
-    'memeriksa' | 'terbuka' | 'selesai'
-  >('memeriksa')
+  // Popup "Halaqoh Belum Diabsen" — TERKONTROL: terpicu saat musyrif memilih
+  // kartu halaqoh binaan di Ringkasan (bukan otomatis saat dashboard dibuka).
+  const [pengingat, setPengingat] = useState<{
+    h: HalaqohSayaItem
+    tanggal: string
+  } | null>(null)
+  // Halaqoh yang langsung dibuka roster-nya di menu Absen Siswa (dari kartu
+  // Ringkasan / tombol "Absen Sekarang" pada popup).
+  const [absenSiswaAwal, setAbsenSiswaAwal] = useState<string | null>(null)
 
   // ===== Realtime: subscribe perubahan tabel Setoran =====
   // Bagian yang menampilkan data setoran dimuat ulang otomatis (remount via key)
@@ -405,6 +409,39 @@ export default function Dashboard({
     setSection(key)
   }
 
+  /** Buka menu Absen Siswa langsung pada roster halaqoh tertentu. */
+  const bukaAbsenSiswa = useCallback((halaqohId: string) => {
+    setPengingat(null)
+    setAbsenSiswaAwal(halaqohId)
+    setSection('absensi-siswa')
+  }, [])
+
+  /** Musyrif memilih kartu halaqoh binaan di Ringkasan: bila halaqoh belum
+   *  diabsen hari ini tampilkan popup pengingat, selain itu langsung buka
+   *  roster absen halaqoh tsb. */
+  const handlePilihHalaqoh = useCallback(
+    async (h: HalaqohSayaItem) => {
+      try {
+        const d = await api<{
+          tanggalServer: string
+          siswa: Array<{ absen: unknown }>
+        }>(`/api/absensi-siswa?halaqohId=${encodeURIComponent(h.id)}`)
+        if (
+          h.jumlahSiswa > 0 &&
+          d.siswa.length > 0 &&
+          d.siswa.every((s) => !s.absen)
+        ) {
+          setPengingat({ h, tanggal: d.tanggalServer })
+          return
+        }
+      } catch {
+        /* gagal cek status — tetap arahkan ke menu Absen Siswa */
+      }
+      bukaAbsenSiswa(h.id)
+    },
+    [bukaAbsenSiswa]
+  )
+
   return (
     <div className="min-h-screen bg-muted/30">
       {/* Sidebar desktop (lg+) */}
@@ -435,11 +472,21 @@ export default function Dashboard({
           {section === 'ringkasan' && (
             // Ikut keyed dgn absensiTick: notifikasi "absen menunggu ACC" di ringkasan
             // admin ter-refresh otomatis saat musyrif baru mengirim absen.
-            <RingkasanSection key={`ringkasan-${dataTick}-${absensiTick}`} user={user} onNavigate={handleSelect} />
+            <RingkasanSection
+              key={`ringkasan-${dataTick}-${absensiTick}`}
+              user={user}
+              onNavigate={handleSelect}
+              onPilihHalaqoh={handlePilihHalaqoh}
+            />
           )}
           {section === 'input-setoran' && <InputSetoranSection user={user} />}
           {section === 'absensi' && <AbsensiSection user={user} />}
-          {section === 'absensi-siswa' && <AbsenSiswaSection />}
+          {section === 'absensi-siswa' && (
+            <AbsenSiswaSection
+              halaqohAwal={absenSiswaAwal}
+              onKonsumsiAwal={() => setAbsenSiswaAwal(null)}
+            />
+          )}
           {section === 'rekapan' && <RekapanSection key={`rekapan-${dataTick}`} user={user} />}
           {section === 'program' && <ProgramSection />}
           {section === 'musyrif' && <MusyrifSection />}
@@ -456,17 +503,16 @@ export default function Dashboard({
       </main>
 
       {/* Popup pengingat absen musyrif (selfie) saat baru login & belum absen hari ini */}
-      {user.role === 'musyrif' && (
-        <AbsenAwalDialog user={user} onStatus={setAbsenAwalStatus} />
-      )}
+      {user.role === 'musyrif' && <AbsenAwalDialog user={user} />}
 
-      {/* Popup notifikasi "Halaqoh Belum Diabsen" — musyrif diingatkan & diarahkan
-          ke menu Absen Siswa; menunggu popup di atas selesai agar tidak menumpuk */}
+      {/* Popup "Halaqoh Belum Diabsen" — muncul saat musyrif memilih kartu
+          halaqoh binaan yang belum diabsen hari ini di menu Ringkasan */}
       {user.role === 'musyrif' && (
         <PengingatAbsenSiswaDialog
-          user={user}
-          tunda={absenAwalStatus !== 'selesai'}
-          onNavigate={handleSelect}
+          target={pengingat?.h ?? null}
+          tanggal={pengingat?.tanggal ?? ''}
+          onAbsenSekarang={() => pengingat && bukaAbsenSiswa(pengingat.h.id)}
+          onTunda={() => setPengingat(null)}
         />
       )}
     </div>

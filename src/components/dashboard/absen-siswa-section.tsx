@@ -14,7 +14,7 @@
  *   mundur (backdate) bisa dikoreksi lewat pemilih tanggal pada roster.
  * - Data absensi ikut tampil di Rekapan Bulanan (menu Rekap Setoran).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   CalendarCheck2,
@@ -168,7 +168,15 @@ function BarisSiswa({
   )
 }
 
-export default function AbsenSiswaSection() {
+export default function AbsenSiswaSection({
+  halaqohAwal = null,
+  onKonsumsiAwal,
+}: {
+  /** Halaqoh yang dibuka langsung saat section tampil (dari kartu Ringkasan). */
+  halaqohAwal?: string | null
+  /** Wajib dipanggil sekali setelah permintaan awal diproses. */
+  onKonsumsiAwal?: () => void
+}) {
   const [statusList, setStatusList] = useState<AbsensiSiswaStatusItem[] | null>(null)
   const [tanggal, setTanggal] = useState('')
   const [memuatUlang, setMemuatUlang] = useState(false)
@@ -242,6 +250,19 @@ export default function AbsenSiswaSection() {
     },
     [muatRoster]
   )
+
+  // Buka langsung roster halaqoh yang diminta Dashboard (kartu Halaqoh Binaan).
+  // Melewati dialog pengingat internal: pemeriksaan "belum diabsen" sudah
+  // dilakukan di Dashboard sebelum menu ini dibuka.
+  const awalDiprosesRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!halaqohAwal || !statusList || awalDiprosesRef.current === halaqohAwal) return
+    awalDiprosesRef.current = halaqohAwal
+    onKonsumsiAwal?.()
+    const target = statusList.find((h) => h.id === halaqohAwal)
+    if (!target) return
+    void masukRoster(target)
+  }, [halaqohAwal, statusList, masukRoster, onKonsumsiAwal])
 
   /** Buka roster halaqoh — dengan notifikasi pengingat bila belum diabsen hari ini. */
   const bukaHalaqoh = useCallback(

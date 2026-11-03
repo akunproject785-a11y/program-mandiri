@@ -16,6 +16,7 @@ import {
   CalendarCheck,
   Camera,
   ClipboardList,
+  ChevronRight,
   FolderOpen,
   IdCard,
   Inbox,
@@ -25,7 +26,12 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/client'
 import { describeSetoran, formatTanggalIndo } from '@/lib/format'
-import { type AbsensiMusyrifItem, type SummaryData, type UserInfo } from '@/lib/types'
+import {
+  type AbsensiMusyrifItem,
+  type HalaqohSayaItem,
+  type SummaryData,
+  type UserInfo,
+} from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -38,10 +44,13 @@ import {
 export default function RingkasanSection({
   user,
   onNavigate,
+  onPilihHalaqoh,
 }: {
   user: UserInfo
   /** Dipakai CTA musyrif (→ Absen) dan notifikasi admin (→ Kelola Absen). */
   onNavigate?: (section: 'absensi' | 'kelola-absensi') => void
+  /** Musyrif memilih kartu halaqoh binaan — pemicu popup pengingat absen siswa. */
+  onPilihHalaqoh?: (h: HalaqohSayaItem) => void
 }) {
   const isMusyrif = user.role === 'musyrif'
   const [summary, setSummary] = useState<SummaryData | null>(null)
@@ -249,7 +258,7 @@ export default function RingkasanSection({
               <CardHeader>
                 <CardTitle>Halaqoh Binaan Saya</CardTitle>
                 <CardDescription>
-                  Daftar halaqoh yang Anda bina beserta program kelasnya.
+                  Pilih halaqoh untuk membuka absen siswa hari ini.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -262,17 +271,30 @@ export default function RingkasanSection({
                 ) : (
                   <ul className="grid gap-3 sm:grid-cols-2">
                     {(summary.halaqohSaya ?? []).map((h) => (
-                      <li key={h.id} className="rounded-lg border p-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{h.nama}</p>
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {h.kode} • {h.programNama}
+                      <li key={h.id}>
+                        <button
+                          type="button"
+                          onClick={() => onPilihHalaqoh?.(h)}
+                          className="group w-full cursor-pointer rounded-lg border p-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+                          aria-label={`Buka absen siswa halaqoh ${h.nama}`}
+                        >
+                          <div className="flex min-w-0 items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{h.nama}</p>
+                              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                {h.kode} • {h.programNama}
+                              </p>
+                            </div>
+                            <ChevronRight
+                              className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                              aria-hidden
+                            />
+                          </div>
+                          <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                            <Users className="h-3.5 w-3.5" aria-hidden />
+                            {h.jumlahSiswa} siswa
                           </p>
-                        </div>
-                        <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                          <Users className="h-3.5 w-3.5" aria-hidden />
-                          {h.jumlahSiswa} siswa
-                        </p>
+                        </button>
                       </li>
                     ))}
                   </ul>
