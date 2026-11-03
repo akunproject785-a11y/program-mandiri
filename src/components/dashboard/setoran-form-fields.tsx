@@ -16,10 +16,19 @@
  *    ditampilkan di sini). `onCancel` opsional — tombol Batal hanya muncul
  *    bila disediakan.
  *  - `wajibAbsen` (mode BUAT musyrif): siswa wajib punya absensi pada tanggal
- *    setoran sebelum tombol simpan aktif; absen cepat tersedia di dalam form.
+ *    setoran sebelum tombol simpan aktif. Bila belum diabsen, form menampilkan
+ *    pengingat + tombol "Buka Menu Absen Siswa" (absen dilakukan lewat menu
+ *    Absen Siswa — sekali klik "Tandai Semua Hadir" untuk seluruh siswa —
+ *    bukan absen satu per satu di dalam form ini).
  */
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardCheck,
+  Loader2,
+  RefreshCw,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
 import {
@@ -32,7 +41,6 @@ import {
   MENU_SETORAN_C,
   MENU_SETORAN_D,
   NILAI_OPTIONS,
-  STATUS_KEHADIRAN,
   type SetoranItem,
   type SiswaItem,
   type StatusKehadiran,
@@ -173,6 +181,7 @@ export default function SetoranFormFields({
   onCancel,
   submitLabel,
   wajibAbsen = false,
+  onBukaAbsenSiswa,
 }: {
   /** Siswa target (mode BUAT). */
   siswa?: SiswaItem
@@ -183,6 +192,12 @@ export default function SetoranFormFields({
   submitLabel?: string
   /** Mode BUAT musyrif: siswa wajib diabsen pada tanggal setoran sebelum simpan. */
   wajibAbsen?: boolean
+  /**
+   * Dibuka saat musyrif perlu mengabsen siswa: tutup popup ini lalu pindah ke
+   * menu Absen Siswa (absen satu klik untuk semua siswa). Bila tidak diberikan,
+   * pengingat tampil tanpa tombol navigasi.
+   */
+  onBukaAbsenSiswa?: () => void
 }) {
   const isEdit = Boolean(initial)
   const tipe: TipeInputan = initial?.tipe ?? siswa?.tipeInputan ?? 'A'
@@ -200,7 +215,6 @@ export default function SetoranFormFields({
     { status: StatusKehadiran; keterangan: string | null } | null | undefined
   >(undefined)
   const [absenCekError, setAbsenCekError] = useState<string | null>(null)
-  const [absenSaving, setAbsenSaving] = useState<StatusKehadiran | null>(null)
   const [absenCekKey, setAbsenCekKey] = useState(0)
 
   useEffect(() => {
@@ -222,29 +236,6 @@ export default function SetoranFormFields({
       mounted = false
     }
   }, [perluCekAbsen, halaqohId, siswaId, form.tanggal, absenCekKey])
-
-  const absenCepat = async (status: StatusKehadiran) => {
-    if (!halaqohId || !siswaId || !form.tanggal) return
-    setAbsenSaving(status)
-    try {
-      await api('/api/absensi-siswa', {
-        method: 'POST',
-        body: {
-          halaqohId,
-          tanggal: form.tanggal,
-          entries: [{ siswaId, status }],
-        },
-      })
-      toast.success(`${siswa?.nama ?? 'Siswa'} diabsen: ${status}`)
-      setAbsenCekKey((k) => k + 1)
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : 'Gagal mengabsen siswa. Silakan coba lagi.'
-      )
-    } finally {
-      setAbsenSaving(null)
-    }
-  }
 
   // Simpan diblokir selama status absen belum diketahui pasti ada
   // (belum diabsen, atau masih memeriksa). Gagal cek = fail-open agar tidak mengunci.
@@ -279,7 +270,7 @@ export default function SetoranFormFields({
     }
     if (absenGate) {
       toast.error(
-        'Siswa belum diabsen. Absen siswa terlebih dahulu sebelum mencatat setoran.'
+        'Siswa belum diabsen. Buka menu Absen Siswa untuk mengabsen terlebih dahulu.'
       )
       return
     }
@@ -441,29 +432,38 @@ export default function SetoranFormFields({
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                 <span>
                   Siswa belum diabsen pada {hari.toLowerCase()}, {formatTanggalIndo(form.tanggal)}.
-                  Absen siswa terlebih dahulu sebelum mencatat setoran.
+                  Absen dulu di menu <span className="font-semibold">Absen Siswa</span> sebelum
+                  mencatat setoran.
                 </span>
               </p>
-              <div className="flex flex-wrap gap-2" aria-label="Absen cepat">
-                {STATUS_KEHADIRAN.map((s) => (
+              <div className="flex flex-wrap gap-2" aria-label="Arahkan ke absen siswa">
+                {onBukaAbsenSiswa ? (
                   <Button
-                    key={s}
                     type="button"
-                    variant={s === 'HADIR' ? 'default' : 'outline'}
                     size="sm"
                     className="min-h-10"
-                    disabled={absenSaving !== null || submitting}
-                    onClick={() => absenCepat(s)}
+                    disabled={submitting}
+                    onClick={onBukaAbsenSiswa}
                   >
-                    {absenSaving === s ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : null}
-                    {s}
+                    <ClipboardCheck className="h-4 w-4" />
+                    Buka Menu Absen Siswa
                   </Button>
-                ))}
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-10"
+                  onClick={() => setAbsenCekKey((k) => k + 1)}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Periksa Ulang
+                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Tersimpan sebagai absen hari {hari.toLowerCase()}, {formatTanggalIndo(form.tanggal)} — keterangan dapat dilengkapi di menu Absen.
+                Di menu Absen Siswa seluruh siswa cukup diabsen sekali klik lewat tombol
+                &ldquo;Tandai Semua Hadir&rdquo; — status SAKIT/IZIN/ALPA dan keterangan bisa
+                diatur per siswa di sana.
               </p>
             </div>
           ) : (

@@ -46,6 +46,7 @@ export default function SetoranSiswaPopup({
   onSaved,
   onDataChanged,
   user,
+  onBukaMenuAbsen,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -56,6 +57,11 @@ export default function SetoranSiswaPopup({
   onDataChanged?: () => void
   /** User login — untuk menentukan izin edit/hapus. */
   user: UserInfo
+  /**
+   * Musyrif perlu mengabsen siswa dulu: popup ditutup lalu dashboard pindah ke
+   * menu Absen Siswa (absen sekali klik untuk semua siswa).
+   */
+  onBukaMenuAbsen?: () => void
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -78,6 +84,7 @@ export default function SetoranSiswaPopup({
             onOpenChange={onOpenChange}
             onSaved={onSaved}
             onDataChanged={onDataChanged}
+            onBukaMenuAbsen={onBukaMenuAbsen}
           />
         </DialogContent>
       ) : null}
@@ -97,6 +104,7 @@ function PopupBody({
   onOpenChange,
   onSaved,
   onDataChanged,
+  onBukaMenuAbsen,
 }: {
   siswa: SiswaItem
   initialTerakhir: SiswaTerakhirInfo | null
@@ -104,6 +112,7 @@ function PopupBody({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
   onDataChanged?: () => void
+  onBukaMenuAbsen?: () => void
 }) {
   const [terakhirInfo, setTerakhirInfo] = useState<SiswaTerakhirInfo | null>(initialTerakhir)
   const [editTarget, setEditTarget] = useState<SetoranItem | null>(null)
@@ -163,11 +172,13 @@ function PopupBody({
         onDelete={(item) => setDeleteTarget(item)}
       />
 
-      {/* Form dinamis sesuai tipe program siswa — musyrif wajib absen dulu */}
+      {/* Form dinamis sesuai tipe program siswa — musyrif wajib absen dulu
+          (diarahkan ke menu Absen Siswa, bukan absen satu per satu di sini) */}
       <SetoranFormFields
         key={siswa.id}
         siswa={siswa}
         wajibAbsen={user.role === 'musyrif'}
+        onBukaAbsenSiswa={onBukaMenuAbsen}
         onSuccess={() => {
           onSaved()
           onOpenChange(false)

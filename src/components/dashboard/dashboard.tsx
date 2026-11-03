@@ -429,7 +429,11 @@ export default function Dashboard({
             // admin ter-refresh otomatis saat musyrif baru mengirim absen.
             <RingkasanSection key={`ringkasan-${dataTick}-${absensiTick}`} user={user} onNavigate={handleSelect} />
           )}
-          {section === 'input-setoran' && <InputSetoranSection user={user} />}
+          {section === 'input-setoran' && (
+            // onNavigate: gate absen mengarahkan musyrif ke menu Absen Siswa
+            // (absen sekali klik "Tandai Semua Hadir"), bukan absen satu per satu.
+            <InputSetoranSection user={user} onNavigate={handleSelect} />
+          )}
           {section === 'absensi' && <AbsensiSection user={user} />}
           {section === 'absensi-siswa' && <AbsenSiswaSection />}
           {section === 'rekapan' && <RekapanSection key={`rekapan-${dataTick}`} user={user} />}
