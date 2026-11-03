@@ -10,6 +10,9 @@
  * - Bila ditunda ("Nanti Saja" / ditutup), popup tidak muncul lagi pada hari yang
  *   sama di tab yang sama (flag sessionStorage); flag dihapus saat logout sehingga
  *   login ulang memunculkan popup kembali.
+ * - `onStatus` melaporkan siklus popup ke Dashboard ('memeriksa' → 'terbuka' |
+ *   'selesai') supaya popup notifikasi lain (pengingat halaqoh belum diabsen)
+ *   bisa MENUNGGU dan tidak menumpuk di atas popup ini.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, Send } from 'lucide-react'
@@ -37,7 +40,14 @@ interface AbsenStatusResponse {
   items: AbsensiMusyrifItem[]
 }
 
-export default function AbsenAwalDialog({ user }: { user: UserInfo }) {
+export default function AbsenAwalDialog({
+  user,
+  onStatus,
+}: {
+  user: UserInfo
+  /** Laporan siklus ke Dashboard: sedang memeriksa / popup terbuka / selesai. */
+  onStatus?: (status: 'memeriksa' | 'terbuka' | 'selesai') => void
+}) {
   const [open, setOpen] = useState(false)
   const [ditolak, setDitolak] = useState(false)
   const [catatanAdmin, setCatatanAdmin] = useState<string | null>(null)
@@ -50,6 +60,9 @@ export default function AbsenAwalDialog({ user }: { user: UserInfo }) {
 
   const kameraRef = useRef<HTMLInputElement>(null)
   const previewUrlLama = useRef<string | null>(null)
+  // Simpan callback status di ref agar efek mount-only tak perlu dependensi baru.
+  const onStatusRef = useRef(onStatus)
+  onStatusRef.current = onStatus
 
   // ===== Cek status absen saat musyrif masuk dashboard =====
   useEffect(() => {
@@ -59,10 +72,16 @@ export default function AbsenAwalDialog({ user }: { user: UserInfo }) {
         if (!mounted) return
         const hariIni = res.hariIni
         const perluAbsen = !hariIni || hariIni.status === 'TOLAK'
-        if (!perluAbsen) return
+        if (!perluAbsen) {
+          onStatusRef.current?.('selesai')
+          return
+        }
         // Sudah pernah ditunda hari ini (tab ini)? Jangan ganggu lagi.
         try {
-          if (sessionStorage.getItem(ABSEN_POPUP_SKIP_KEY) === res.tanggalServer) return
+          if (sessionStorage.getItem(ABSEN_POPUP_SKIP_KEY) === res.tanggalServer) {
+            onStatusRef.current?.('selesai')
+            return
+          }
         } catch {
           /* sessionStorage tidak tersedia — tetap tampilkan */
         }
@@ -70,9 +89,11 @@ export default function AbsenAwalDialog({ user }: { user: UserInfo }) {
         setDitolak(hariIni?.status === 'TOLAK')
         setCatatanAdmin(hariIni?.catatanAdmin ?? null)
         setOpen(true)
+        onStatusRef.current?.('terbuka')
       })
       .catch(() => {
         /* gagal cek status — jangan ganggu musyrif */
+        onStatusRef.current?.('selesai')
       })
     return () => {
       mounted = false
@@ -90,6 +111,7 @@ export default function AbsenAwalDialog({ user }: { user: UserInfo }) {
         }
       }
       setOpen(false)
+      onStatusRef.current?.('selesai')
     },
     [tanggal]
   )
@@ -150,6 +172,7 @@ export default function AbsenAwalDialog({ user }: { user: UserInfo }) {
       setKeterangan('')
       // Absen berhasil — tutup tanpa flag tunda (status hari ini sudah terisi).
       setOpen(false)
+      onStatusRef.current?.('selesai')
     } catch (err) {
       toast.error((err as Error).message)
     } finally {

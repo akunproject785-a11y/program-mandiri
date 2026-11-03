@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Loader2, BookOpenText } from 'lucide-react'
 import { api } from '@/lib/client'
 import { ABSEN_POPUP_SKIP_KEY } from '@/components/dashboard/absen-awal-dialog'
+import { ABSEN_SISWA_PENGINGAT_SKIP_KEY } from '@/components/dashboard/pengingat-absen-siswa-dialog'
 import type { UserInfo } from '@/lib/types'
 import LandingPage from '@/components/landing/landing-page'
 import Dashboard from '@/components/dashboard/dashboard'
@@ -33,9 +34,11 @@ export default function Home() {
     } catch {
       // abaikan, tetap kembali ke landing
     }
-    // Reset popup pengingat absen agar login berikutnya memunculkannya lagi.
+    // Reset popup pengingat (absen musyrif & halaqoh belum diabsen) agar login
+    // berikutnya memunculkannya lagi.
     try {
       sessionStorage.removeItem(ABSEN_POPUP_SKIP_KEY)
+      sessionStorage.removeItem(ABSEN_SISWA_PENGINGAT_SKIP_KEY)
     } catch {
       /* abaikan */
     }

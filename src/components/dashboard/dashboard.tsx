@@ -46,6 +46,7 @@ import SiswaSection from '@/components/dashboard/siswa-section'
 import KelolaAbsensiSection from '@/components/dashboard/kelola-absensi-section'
 import RekapAbsensiSection from '@/components/dashboard/rekap-absensi-section'
 import AbsenAwalDialog from '@/components/dashboard/absen-awal-dialog'
+import PengingatAbsenSiswaDialog from '@/components/dashboard/pengingat-absen-siswa-dialog'
 import SettingsSection from '@/components/dashboard/settings-section'
 
 export type SectionKey =
@@ -324,6 +325,13 @@ export default function Dashboard({
 }) {
   const [section, setSection] = useState<SectionKey>('ringkasan')
 
+  // Siklus popup Absen Awal (selfie musyrif): 'memeriksa' → 'terbuka' | 'selesai'.
+  // Popup pengingat halaqoh belum diabsen MENUNGGU status 'selesai' agar dua
+  // popup tidak pernah tampil menumpuk saat keduanya perlu muncul.
+  const [absenAwalStatus, setAbsenAwalStatus] = useState<
+    'memeriksa' | 'terbuka' | 'selesai'
+  >('memeriksa')
+
   // ===== Realtime: subscribe perubahan tabel Setoran =====
   // Bagian yang menampilkan data setoran dimuat ulang otomatis (remount via key)
   // agar setoran yang dibuat musyrif lain langsung terlihat.
@@ -429,11 +437,7 @@ export default function Dashboard({
             // admin ter-refresh otomatis saat musyrif baru mengirim absen.
             <RingkasanSection key={`ringkasan-${dataTick}-${absensiTick}`} user={user} onNavigate={handleSelect} />
           )}
-          {section === 'input-setoran' && (
-            // onNavigate: gate absen mengarahkan musyrif ke menu Absen Siswa
-            // (absen sekali klik "Tandai Semua Hadir"), bukan absen satu per satu.
-            <InputSetoranSection user={user} onNavigate={handleSelect} />
-          )}
+          {section === 'input-setoran' && <InputSetoranSection user={user} />}
           {section === 'absensi' && <AbsensiSection user={user} />}
           {section === 'absensi-siswa' && <AbsenSiswaSection />}
           {section === 'rekapan' && <RekapanSection key={`rekapan-${dataTick}`} user={user} />}
@@ -451,8 +455,20 @@ export default function Dashboard({
         </div>
       </main>
 
-      {/* Popup pengingat absen saat musyrif baru login & belum absen hari ini */}
-      {user.role === 'musyrif' && <AbsenAwalDialog user={user} />}
+      {/* Popup pengingat absen musyrif (selfie) saat baru login & belum absen hari ini */}
+      {user.role === 'musyrif' && (
+        <AbsenAwalDialog user={user} onStatus={setAbsenAwalStatus} />
+      )}
+
+      {/* Popup notifikasi "Halaqoh Belum Diabsen" — musyrif diingatkan & diarahkan
+          ke menu Absen Siswa; menunggu popup di atas selesai agar tidak menumpuk */}
+      {user.role === 'musyrif' && (
+        <PengingatAbsenSiswaDialog
+          user={user}
+          tunda={absenAwalStatus !== 'selesai'}
+          onNavigate={handleSelect}
+        />
+      )}
     </div>
   )
 }

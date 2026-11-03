@@ -388,14 +388,7 @@ function SiswaStep({
   )
 }
 
-export default function InputSetoranSection({
-  user,
-  onNavigate,
-}: {
-  user: UserInfo
-  /** Pindah menu dashboard — dipakai tombol "Buka Menu Absen Siswa" pada gate absen. */
-  onNavigate?: (section: 'absensi-siswa') => void
-}) {
+export default function InputSetoranSection({ user }: { user: UserInfo }) {
   const [step, setStep] = useState(1)
   const [program, setProgram] = useState<Program | null>(null)
   const [halaqoh, setHalaqoh] = useState<HalaqohItem | null>(null)
@@ -437,18 +430,6 @@ export default function InputSetoranSection({
     setPopupSiswa(null)
     setPopupTerakhir(null)
     setSavedKey((k) => k + 1)
-  }
-
-  /**
-   * Gate absen: musyrif diarahkan ke menu Absen Siswa (bukan absen satu per
-   * satu di popup). Popup ditutup agar form tak tertinggal terbuka, lalu menu
-   * berganti; state langkah di-reset karena section termount ulang.
-   */
-  const handleBukaMenuAbsen = () => {
-    setPopupOpen(false)
-    setPopupSiswa(null)
-    setPopupTerakhir(null)
-    onNavigate?.('absensi-siswa')
   }
 
   const stepSub: Record<number, string> = {
@@ -552,7 +533,6 @@ export default function InputSetoranSection({
         terakhir={popupTerakhir}
         onSaved={handleSaved}
         onDataChanged={() => setSavedKey((k) => k + 1)}
-        onBukaMenuAbsen={handleBukaMenuAbsen}
         user={user}
       />
     </>

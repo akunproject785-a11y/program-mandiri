@@ -16,26 +16,16 @@
  *    ditampilkan di sini). `onCancel` opsional — tombol Batal hanya muncul
  *    bila disediakan.
  *  - `wajibAbsen` (mode BUAT musyrif): siswa wajib punya absensi pada tanggal
- *    setoran sebelum tombol simpan aktif. Bila belum diabsen, form menampilkan
- *    pengingat + tombol "Buka Menu Absen Siswa" (absen dilakukan lewat menu
- *    Absen Siswa — sekali klik "Tandai Semua Hadir" untuk seluruh siswa —
- *    bukan absen satu per satu di dalam form ini).
+ *    setoran sebelum tombol simpan aktif (tombol terkunci berlabel "Absen Siswa
+ *    Dulu"). Pengingat kehadiran tidak lagi tampil di dalam form ini — musyrif
+ *    diingatkan lewat POPUP notifikasi "Halaqoh Belum Diabsen" di dashboard
+ *    (PengingatAbsenSiswaDialog) dan mengabsen lewat menu Absen Siswa.
  */
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ClipboardCheck,
-  Loader2,
-  RefreshCw,
-} from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
-import {
-  formatTanggalIndo,
-  hariFromTanggal,
-  todayISO,
-} from '@/lib/format'
+import { hariFromTanggal, todayISO } from '@/lib/format'
 import { getSurahsByJuz, JUZ_OPTIONS_C_D } from '@/lib/quran-data'
 import {
   MENU_SETORAN_C,
@@ -181,7 +171,6 @@ export default function SetoranFormFields({
   onCancel,
   submitLabel,
   wajibAbsen = false,
-  onBukaAbsenSiswa,
 }: {
   /** Siswa target (mode BUAT). */
   siswa?: SiswaItem
@@ -192,12 +181,6 @@ export default function SetoranFormFields({
   submitLabel?: string
   /** Mode BUAT musyrif: siswa wajib diabsen pada tanggal setoran sebelum simpan. */
   wajibAbsen?: boolean
-  /**
-   * Dibuka saat musyrif perlu mengabsen siswa: tutup popup ini lalu pindah ke
-   * menu Absen Siswa (absen satu klik untuk semua siswa). Bila tidak diberikan,
-   * pengingat tampil tanpa tombol navigasi.
-   */
-  onBukaAbsenSiswa?: () => void
 }) {
   const isEdit = Boolean(initial)
   const tipe: TipeInputan = initial?.tipe ?? siswa?.tipeInputan ?? 'A'
@@ -210,12 +193,12 @@ export default function SetoranFormFields({
 
   // ===== Gate absen (mode BUAT musyrif): siswa harus diabsen dulu =====
   // absenStatus: undefined = sedang dicek, null = belum diabsen, objek = sudah.
+  // Pengingat tampil sebagai popup notifikasi dashboard, bukan di form ini.
   const perluCekAbsen = Boolean(!isEdit && wajibAbsen && siswaId && halaqohId && form.tanggal)
   const [absenStatus, setAbsenStatus] = useState<
     { status: StatusKehadiran; keterangan: string | null } | null | undefined
   >(undefined)
   const [absenCekError, setAbsenCekError] = useState<string | null>(null)
-  const [absenCekKey, setAbsenCekKey] = useState(0)
 
   useEffect(() => {
     if (!perluCekAbsen || !halaqohId || !siswaId) return
@@ -235,7 +218,7 @@ export default function SetoranFormFields({
     return () => {
       mounted = false
     }
-  }, [perluCekAbsen, halaqohId, siswaId, form.tanggal, absenCekKey])
+  }, [perluCekAbsen, halaqohId, siswaId, form.tanggal])
 
   // Simpan diblokir selama status absen belum diketahui pasti ada
   // (belum diabsen, atau masih memeriksa). Gagal cek = fail-open agar tidak mengunci.
@@ -399,84 +382,6 @@ export default function SetoranFormFields({
           />
         </div>
       </Field>
-
-      {/* ===== Gate absen — musyrif wajib mengabsen siswa dulu (mode BUAT) ===== */}
-      {perluCekAbsen ? (
-        <div
-          aria-live="polite"
-          className="rounded-md border p-3 text-sm"
-          role="status"
-        >
-          {absenCekError ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-              <span className="text-muted-foreground">{absenCekError}</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="min-h-9"
-                onClick={() => setAbsenCekKey((k) => k + 1)}
-              >
-                Coba Lagi
-              </Button>
-            </div>
-          ) : absenStatus === undefined ? (
-            <p className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Memeriksa absen siswa…
-            </p>
-          ) : absenStatus === null ? (
-            <div className="space-y-2.5">
-              <p className="flex items-start gap-2 font-medium text-amber-700 dark:text-amber-400">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                <span>
-                  Siswa belum diabsen pada {hari.toLowerCase()}, {formatTanggalIndo(form.tanggal)}.
-                  Absen dulu di menu <span className="font-semibold">Absen Siswa</span> sebelum
-                  mencatat setoran.
-                </span>
-              </p>
-              <div className="flex flex-wrap gap-2" aria-label="Arahkan ke absen siswa">
-                {onBukaAbsenSiswa ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="min-h-10"
-                    disabled={submitting}
-                    onClick={onBukaAbsenSiswa}
-                  >
-                    <ClipboardCheck className="h-4 w-4" />
-                    Buka Menu Absen Siswa
-                  </Button>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="min-h-10"
-                  onClick={() => setAbsenCekKey((k) => k + 1)}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Periksa Ulang
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Di menu Absen Siswa seluruh siswa cukup diabsen sekali klik lewat tombol
-                &ldquo;Tandai Semua Hadir&rdquo; — status SAKIT/IZIN/ALPA dan keterangan bisa
-                diatur per siswa di sana.
-              </p>
-            </div>
-          ) : (
-            <p className="flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-400">
-              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-              <span>
-                Sudah diabsen: {absenStatus.status}
-                {absenStatus.keterangan ? ` — ${absenStatus.keterangan}` : ''}
-              </span>
-            </p>
-          )}
-        </div>
-      ) : null}
 
       {/* ===== Type A — Tahsin Anaba ===== */}
       {tipe === 'A' ? (
