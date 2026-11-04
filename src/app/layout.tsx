@@ -25,9 +25,8 @@ export const metadata: Metadata = {
     "setoran hafalan",
     "Program Qur'an Mandiri",
   ],
-  icons: {
-    icon: "/logo.svg",
-  },
+  // Favicon memakai konvensi App Router: src/app/icon.png, apple-icon.png,
+  // dan favicon.ico (logo MIN 6 Sukoharjo).
 };
 
 export default function RootLayout({

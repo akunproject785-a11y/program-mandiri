@@ -3,7 +3,6 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import {
   ArrowRight,
-  BookOpenText,
   CircleCheck,
   ClipboardCheck,
   LayoutTemplate,
@@ -18,6 +17,7 @@ import {
 import { api } from '@/lib/client'
 import type { SettingsData, StatsData, UserInfo } from '@/lib/types'
 import { ThemeToggle } from '@/components/theme-toggle'
+import LogoMark from '@/components/logo-mark'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { LoginDialog } from '@/components/landing/login-dialog'
@@ -80,16 +80,6 @@ function renderHeroTitle(title: string): ReactNode {
       <span className="text-emerald-300">{marker}</span>
       {title.slice(idx + marker.length)}
     </>
-  )
-}
-
-function LogoMark({ className }: { className?: string }) {
-  return (
-    <div
-      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary p-2 shadow-sm ${className ?? ''}`}
-    >
-      <BookOpenText className="h-5 w-5 text-primary-foreground" aria-hidden="true" />
-    </div>
   )
 }
 

@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { BookOpenText, Eye, EyeOff, Loader2, LogIn } from 'lucide-react'
+import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
 import type { UserInfo } from '@/lib/types'
+import LogoMark from '@/components/logo-mark'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -79,9 +80,7 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
         <Card className="rounded-lg border-0 shadow-none">
           <CardContent className="space-y-5">
             <div className="flex flex-col items-center gap-3 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary p-2.5 shadow-sm">
-                <BookOpenText className="h-6 w-6 text-primary-foreground" aria-hidden="true" />
-              </div>
+              <LogoMark className="h-12 w-12" />
               <div className="space-y-1">
                 <DialogTitle className="text-xl font-semibold tracking-tight">
                   Selamat Datang Kembali

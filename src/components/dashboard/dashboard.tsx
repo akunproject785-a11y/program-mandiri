@@ -10,7 +10,6 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  BookOpenText,
   CalendarClock,
   Camera,
   ClipboardCheck,
@@ -32,6 +31,7 @@ import { cn } from '@/lib/utils'
 import { api } from '@/lib/client'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { HalaqohSayaItem, UserInfo } from '@/lib/types'
+import LogoMark from '@/components/logo-mark'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -129,9 +129,7 @@ function SidebarContent({
     <div className="flex h-full flex-col">
       {/* Brand */}
       <div className="flex items-center gap-3 px-4 py-5">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/20 p-2">
-          <BookOpenText className="h-6 w-6 text-sidebar-primary" />
-        </span>
+        <LogoMark className="h-10 w-10" />
         <div className="leading-tight">
           <p className="text-sm font-semibold text-sidebar-foreground">Program Qur&apos;an</p>
           <p className="text-xs text-sidebar-foreground/70">Mandiri</p>
@@ -451,9 +449,7 @@ export default function Dashboard({
 
       {/* Topbar mobile (<lg): brand + tema + keluar (navigasi pindah ke bottom bar) */}
       <header className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b bg-background/80 px-3 backdrop-blur lg:hidden print:hidden">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 p-1.5">
-          <BookOpenText className="h-5 w-5 text-primary" />
-        </span>
+        <LogoMark className="h-8 w-8 rounded-lg" />
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">
           Program Qur&apos;an Mandiri
         </h1>

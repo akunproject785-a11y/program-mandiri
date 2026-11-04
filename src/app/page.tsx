@@ -1,10 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, BookOpenText } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { api } from '@/lib/client'
 import { ABSEN_POPUP_SKIP_KEY } from '@/components/dashboard/absen-awal-dialog'
 import type { UserInfo } from '@/lib/types'
+import LogoMark from '@/components/logo-mark'
 import LandingPage from '@/components/landing/landing-page'
 import Dashboard from '@/components/dashboard/dashboard'
 
@@ -45,9 +46,7 @@ export default function Home() {
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
-          <BookOpenText className="h-8 w-8" />
-        </div>
+        <LogoMark className="h-16 w-16 rounded-2xl" />
         <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
           Memuat Program Qur&apos;an Mandiri…
