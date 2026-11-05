@@ -73,3 +73,6 @@ server.log
 # Script lokal berisi proses deploy (tidak untuk repo publik)
 /scripts/deploy-vercel.sh
 /scripts/check-usernames.ts
+
+# DB uji lokal
+prisma/dev-uji.db
