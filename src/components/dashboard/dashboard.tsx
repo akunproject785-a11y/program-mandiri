@@ -47,7 +47,9 @@ import SiswaSection from '@/components/dashboard/siswa-section'
 import KelolaAbsensiSection from '@/components/dashboard/kelola-absensi-section'
 import RekapAbsensiSection from '@/components/dashboard/rekap-absensi-section'
 import AbsenAwalDialog from '@/components/dashboard/absen-awal-dialog'
-import PengingatAbsenSiswaDialog from '@/components/dashboard/pengingat-absen-siswa-dialog'
+import PengingatAbsenSiswaDialog, {
+  semuaSiswaBelumDiabsen,
+} from '@/components/dashboard/pengingat-absen-siswa-dialog'
 import SettingsSection from '@/components/dashboard/settings-section'
 
 export type SectionKey =
@@ -424,11 +426,7 @@ export default function Dashboard({
           tanggalServer: string
           siswa: Array<{ absen: unknown }>
         }>(`/api/absensi-siswa?halaqohId=${encodeURIComponent(h.id)}`)
-        if (
-          h.jumlahSiswa > 0 &&
-          d.siswa.length > 0 &&
-          d.siswa.every((s) => !s.absen)
-        ) {
+        if (semuaSiswaBelumDiabsen(d.siswa, h.jumlahSiswa)) {
           setPengingat({ h, tanggal: d.tanggalServer })
           return
         }
@@ -475,7 +473,11 @@ export default function Dashboard({
               onPilihHalaqoh={handlePilihHalaqoh}
             />
           )}
-          {section === 'input-setoran' && <InputSetoranSection user={user} />}
+          {/* Gerbang absen: sebelum daftar siswa, popup pengingat bila halaqoh
+              belum diabsen — tombolnya mengarah ke menu Absen Siswa */}
+          {section === 'input-setoran' && (
+            <InputSetoranSection user={user} onBukaAbsenSiswa={bukaAbsenSiswa} />
+          )}
           {section === 'absensi' && <AbsensiSection user={user} />}
           {section === 'absensi-siswa' && (
             <AbsenSiswaSection

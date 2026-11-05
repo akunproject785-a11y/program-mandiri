@@ -8,6 +8,13 @@
  *     TERAKHIR untuk SEMUA jenis (Ziyadah/Murojaah/Tilawah/Anaba/Materi)
  *     agar musyrif tahu titik lanjutan setoran.
  *
+ * GERBANG ABSEN (permintaan): sebelum daftar nama siswa (langkah 3) muncul,
+ * status absen halaqoh hari ini diperiksa dulu. Bila halaqoh belum diabsen
+ * sama sekali, POPUP pengingat muncul MengGANTI daftar siswa dan tombolnya
+ * mengarah ke menu Absen Siswa (roster halaqoh tsb langsung terbuka). Daftar
+ * siswa baru terbuka setelah absen tersimpan (atau bila pemeriksaan gagal —
+ * tombol simpan setoran tetap terkunci tanpa absen).
+ *
  * Input setoran siswa dibuka dalam bentuk POPUP (SetoranSiswaPopup) berisi
  * panel "Setoran Terakhir — semua jenis" (dengan aksi edit/hapus catatan yang
  * direkam sendiri) + form dinamis sesuai tipe program.
@@ -25,6 +32,7 @@ import {
   FileText,
   FolderOpen,
   History,
+  Loader2,
   Network,
   RotateCcw,
   Search,
@@ -51,6 +59,9 @@ import {
   LoadingBlock,
   SectionHeader,
 } from '@/components/dashboard/ui-helpers'
+import PengingatAbsenSiswaDialog, {
+  semuaSiswaBelumDiabsen,
+} from '@/components/dashboard/pengingat-absen-siswa-dialog'
 import SetoranTerakhirList from '@/components/dashboard/setoran-terakhir'
 import SetoranSiswaPopup from '@/components/dashboard/setoran-siswa-popup'
 
@@ -388,10 +399,25 @@ function SiswaStep({
   )
 }
 
-export default function InputSetoranSection({ user }: { user: UserInfo }) {
+export default function InputSetoranSection({
+  user,
+  onBukaAbsenSiswa,
+}: {
+  user: UserInfo
+  /** Buka menu Absen Siswa langsung pada roster halaqoh tertentu (dari popup pengingat). */
+  onBukaAbsenSiswa: (halaqohId: string) => void
+}) {
   const [step, setStep] = useState(1)
   const [program, setProgram] = useState<Program | null>(null)
   const [halaqoh, setHalaqoh] = useState<HalaqohItem | null>(null)
+
+  // Gerbang absen: halaqoh terpilih yang belum diabsen → popup pengingat
+  // (daftar siswa TIDAK dibuka). cekAbsenId = halaqoh yang sedang diperiksa.
+  const [pengingat, setPengingat] = useState<{
+    h: HalaqohItem
+    tanggal: string
+  } | null>(null)
+  const [cekAbsenId, setCekAbsenId] = useState<string | null>(null)
 
   // Popup input setoran siswa
   const [popupOpen, setPopupOpen] = useState(false)
@@ -413,7 +439,26 @@ export default function InputSetoranSection({ user }: { user: UserInfo }) {
     setStep(2)
   }
 
-  const handleSelectHalaqoh = (h: HalaqohItem) => {
+  /** Pilih halaqoh: periksa absen hari ini dulu — belum diabsen → popup
+   *  pengingat (daftar siswa ditahan), sudah → langsung buka daftar siswa. */
+  const handleSelectHalaqoh = async (h: HalaqohItem) => {
+    if (cekAbsenId) return
+    setCekAbsenId(h.id)
+    try {
+      const d = await api<{
+        tanggalServer: string
+        siswa: Array<{ absen: unknown }>
+      }>(`/api/absensi-siswa?halaqohId=${encodeURIComponent(h.id)}`)
+      if (semuaSiswaBelumDiabsen(d.siswa, h.jumlahSiswa)) {
+        setPengingat({ h, tanggal: d.tanggalServer })
+        setCekAbsenId(null)
+        return
+      }
+    } catch {
+      /* gagal cek status — tetap buka daftar siswa (tombol simpan tetap
+         terkunci selama belum ada absen) */
+    }
+    setCekAbsenId(null)
     setHalaqoh(h)
     setStep(3)
   }
@@ -498,6 +543,17 @@ export default function InputSetoranSection({ user }: { user: UserInfo }) {
         {stepSub[step]}
       </p>
 
+      {/* Indikator pemeriksaan absen (gerbang sebelum daftar siswa dibuka) */}
+      {cekAbsenId ? (
+        <p
+          className="mt-3 inline-flex items-center gap-2 text-sm text-muted-foreground"
+          aria-live="polite"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          Memeriksa absen siswa hari ini…
+        </p>
+      ) : null}
+
       {/* Konten langkah */}
       <div className="mt-4">
         {step === 1 ? <ProgramStep onSelect={handleSelectProgram} /> : null}
@@ -518,6 +574,17 @@ export default function InputSetoranSection({ user }: { user: UserInfo }) {
           />
         ) : null}
       </div>
+
+      {/* POPUP pengingat absen siswa — gerbang sebelum daftar siswa terbuka:
+          tombol utama mengarah ke menu Absen Siswa, "Nanti Saja" kembali ke
+          daftar halaqoh (daftar siswa tetap tertahan) */}
+      <PengingatAbsenSiswaDialog
+        target={pengingat?.h ?? null}
+        tanggal={pengingat?.tanggal ?? ''}
+        konteks="input-setoran"
+        onAbsenSekarang={() => pengingat && onBukaAbsenSiswa(pengingat.h.id)}
+        onTunda={() => setPengingat(null)}
+      />
 
       {/* POPUP input setoran siswa */}
       <SetoranSiswaPopup

@@ -2,17 +2,17 @@
 
 /**
  * POPUP "Halaqoh Belum Diabsen" (khusus musyrif) — versi TERKONTROL.
- * - TIDAK muncul otomatis saat dashboard dibuka. Popup terpicu saat musyrif
- *   MEMILIH halaqoh-nya (kartu "Halaqoh Binaan Saya" di menu Ringkasan) yang
- *   belum diabsen hari ini — Dashboard yang memeriksa status absen lalu
- *   mengirim `target`.
- * - Tombol "Absen Sekarang" → Dashboard pindah ke menu Absen Siswa dan
- *   langsung membuka roster halaqoh tsb (popup absen siswa muncul setelahnya).
+ * Dipicu dari dua tempat (Dashboard yang memeriksa status absen lebih dulu):
+ * - Ringkasan: musyrif memilih kartu "Halaqoh Binaan Saya" yang belum diabsen.
+ * - Input Setoran: musyrif memilih halaqoh pada langkah 2 — popup menghalangi
+ *   daftar siswa sampai absen tersimpan (konteks "input-setoran").
+ * - Tombol "Absen Sekarang" → pindah ke menu Absen Siswa dan langsung membuka
+ *   roster halaqoh tsb (popup absen siswa muncul setelahnya).
  * - "Nanti Saja" / tombol X / klik luar / Esc hanya menutup popup; memilih
  *   halaqoh yang sama lagi akan memunculkannya kembali selama masih belum
  *   diabsen.
- * - Pengingat di dalam form Input Setoran tetap dihapus — aturan "simpan
- *   setoran butuh absen" tetap berlaku lewat tombol simpan yang terkunci.
+ * - Aturan "simpan setoran butuh absen" tetap berlaku lewat tombol simpan
+ *   yang terkunci.
  */
 import { ClipboardCheck, Users } from 'lucide-react'
 import { formatTanggalIndo } from '@/lib/format'
@@ -33,9 +33,23 @@ export interface PengingatHalaqoh {
   jumlahSiswa: number
 }
 
+/**
+ * True bila halaqoh ini belum diabsen sama sekali hari ini: punya siswa dan
+ * TIDAK ada satu pun record absen (jika sebagian sudah diabsen, biarkan lanjut
+ * — sisanya bisa dilengkapi di roster absen). Dipakai bersama oleh alur
+ * Ringkasan dan alur Input Setoran agar syaratnya konsisten.
+ */
+export function semuaSiswaBelumDiabsen(
+  siswa: Array<{ absen: unknown }>,
+  jumlahSiswa: number
+): boolean {
+  return jumlahSiswa > 0 && siswa.length > 0 && siswa.every((s) => !s.absen)
+}
+
 export default function PengingatAbsenSiswaDialog({
   target,
   tanggal,
+  konteks = 'ringkasan',
   onAbsenSekarang,
   onTunda,
 }: {
@@ -43,11 +57,22 @@ export default function PengingatAbsenSiswaDialog({
   target: PengingatHalaqoh | null
   /** Tanggal "hari ini" versi server (WIB) untuk teks popup. */
   tanggal: string
+  /** "input-setoran" = dipicu dari langkah pilih halaqoh pada Input Setoran. */
+  konteks?: 'ringkasan' | 'input-setoran'
   /** Tombol "Absen Sekarang" — buka menu Absen Siswa pada halaqoh target. */
   onAbsenSekarang: () => void
   /** Tutup popup tanpa pindah menu. */
   onTunda: () => void
 }) {
+  const deskripsi =
+    konteks === 'input-setoran'
+      ? `Siswa ${target?.nama ?? 'halaqoh ini'} belum diabsen hari ini${
+          tanggal ? ` (${formatTanggalIndo(tanggal)})` : ''
+        }. Lakukan absen siswa terlebih dahulu — daftar siswa untuk input setoran baru terbuka setelah absen tersimpan.`
+      : `Belum ada absensi siswa untuk hari ini${
+          tanggal ? ` (${formatTanggalIndo(tanggal)})` : ''
+        }. Absen dulu sebelum mencatat setoran — setoran hanya bisa disimpan untuk siswa yang sudah diabsen.`
+
   return (
     <Dialog open={target !== null} onOpenChange={(o) => !o && onTunda()}>
       <DialogContent className="sm:max-w-md">
@@ -59,12 +84,7 @@ export default function PengingatAbsenSiswaDialog({
             />
             Halaqoh Belum Diabsen
           </DialogTitle>
-          <DialogDescription>
-            Belum ada absensi siswa untuk hari ini
-            {tanggal ? ` (${formatTanggalIndo(tanggal)})` : ''}. Absen dulu sebelum
-            mencatat setoran — setoran hanya bisa disimpan untuk siswa yang sudah
-            diabsen.
-          </DialogDescription>
+          <DialogDescription>{deskripsi}</DialogDescription>
         </DialogHeader>
 
         {target ? (
