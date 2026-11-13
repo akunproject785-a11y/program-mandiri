@@ -109,16 +109,24 @@ export default function AbsensiSection({ user }: { user: UserInfo }) {
 
   const terapkanFile = async (file: File | undefined) => {
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      toast.error('File harus berupa gambar (JPG/PNG/WebP).')
-      return
-    }
     setCompressing(true)
     try {
+      // Validasi & kompresi di dalam compressImageFile (mendukung JPEG/PNG/WebP
+      // + HEIC/HEIF kamera Samsung "High efficiency" — dikonversi otomatis).
       const hasil = await compressImageFile(file)
       if (previewUrlLama.current) URL.revokeObjectURL(previewUrlLama.current)
       previewUrlLama.current = hasil.previewUrl
       setPending(hasil)
+      if (hasil.dariHeic) {
+        toast.info('Foto HEIC dikonversi otomatis ke JPEG.', {
+          description:
+            'Kamera HP Anda memakai format "High efficiency pictures". ' +
+            'Untuk kompatibilitas penuh, ubah setelan kamera ke format JPEG.',
+        })
+      }
+      if (hasil.pakaiFileAsli) {
+        toast.info('Foto dikirim tanpa kompresi (mode fallback).')
+      }
     } catch (err) {
       toast.error((err as Error).message)
     } finally {
@@ -312,11 +320,12 @@ export default function AbsensiSection({ user }: { user: UserInfo }) {
                     </p>
                   </div>
                 )}
-                {/* Input kamera (capture=depan) — tersembunyi */}
+                {/* Input kamera (capture=depan) — tersembunyi; .heic/.heif utk
+                    kamera Samsung mode "High efficiency pictures" */}
                 <input
                   ref={kameraRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,.heic,.heif"
                   capture="user"
                   className="hidden"
                   onChange={(e) => {

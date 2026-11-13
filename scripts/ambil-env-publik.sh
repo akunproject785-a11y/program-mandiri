@@ -15,7 +15,17 @@ for c in $CHUNKS; do
 done
 
 URL=$(grep -oE 'https://[a-z0-9]+\.supabase\.co' /tmp/bundle-all.js | head -1)
-KEY=$(grep -oE 'eyJ[A-Za-z0-9_-]{80,}\.eyJ[A-Za-z0-9_-]{80,}\.[A-Za-z0-9_-]{20,}' /tmp/bundle-all.js | head -1)
+# Anon key dipanggil berdampingan dengan URL pada createBrowserClient — ambil
+# string tepat setelah URL (regex JWT naif sering meleset karena potongan
+# chunk/encoding). Ref proyek di-hardcode sesuai deployment saat ini.
+KEY=$(python3 - <<'PYEOF'
+import re
+s = open('/tmp/bundle-all.js', encoding='utf-8', errors='ignore').read()
+i = s.find('"https://xlajpidborknuanvernc.supabase.co"')
+m = re.match(r'"https://xlajpidborknuanvernc\.supabase\.co"\s*,\s*"([^"]+)"', s[i:i+600]) if i >= 0 else None
+print(m.group(1) if m else '')
+PYEOF
+)
 {
   echo "NEXT_PUBLIC_SUPABASE_URL=$URL"
   echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$KEY"
