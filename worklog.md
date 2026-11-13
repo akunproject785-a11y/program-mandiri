@@ -150,3 +150,37 @@ Stage Summary:
 - MASALAH HP SAMSUNG SELESAI DI PRODUKSI: HEIC otomatis dikonversi, fallback
   decode berlapis, MIME kaku dihapus. Musyrif dengan setelan kamera apa pun
   (HEIF/JPEG) kini bisa absen normal.
+
+---
+Task ID: 46
+Agent: Z.ai (main)
+Task: "pada menu kelola absen musyrif tambahkan opsi hapus agar tidak jadi
+tercatat absenya"
+
+Implementasi (commit setelah entri ini):
+- API: DELETE /api/absensi/admin/:id di src/app/api/absensi/admin/[id]/route.ts
+  — requireAdmin, hapus foto di Storage dulu (kegagalan diabaikan), lalu hapus
+  record Prisma. Berbeda dari TOLAK (record tetap ada).
+- UI kelola-absensi-section.tsx: tombol "Hapus" (variant outline destructive,
+  ikon Trash2) di SEMUA baris — desktop tabel & kartu mobile; dialog
+  konfirmasi "Hapus Absensi Permanen" (nama + tanggal + jam + peringatan tidak
+  bisa dibatalkan); toast sukses; row dihapus dari state lokal (statistik ikut
+  berkurang).
+
+E2E produksi (deployment program-mandiri-ceqkh2gix):
+- Login admin → menu Kelola Absen Musyrif → baris amanda 13 Nov (absen uji
+  Task 45, PENDING 15:27) → Hapus → dialog konfirmasi tampil dengan teks
+  benar → "Hapus Permanen" → row hilang, API /api/absensi/admin 11→10 ✔
+- Foto di storage terhapus: URL target kini 400, foto kontrol record lain
+  masih 200 (pemeriksaan pertama tampak 200 karena cache browser) ✔
+- Catatan operasional: password Supabase auth admin@quranmandiri.id DIRESET ke
+  nilai demo terdokumentasi (admin123) — seed lama sempat melewatkan akun ini
+  ("tidak ditemukan — lewati") sehingga password tidak pernah direset ke nilai
+  demo; reset via service key (scripts/reset-password-admin-demo.mjs, key dari
+  env pull, tidak pernah dicetak).
+- Bukti: download/tampilan-website/46-dialog-hapus-absensi.png,
+  46-kelola-absen-setelah-hapus.png
+
+Stage Summary:
+- FITUR HAPUS ABSEN MUSYRIF SELESAI DI PRODUKSI: admin bisa menghapus absensi
+  apa pun (PENDING/ACC/TOLAK) beserta fotonya sehingga tidak tercatat.

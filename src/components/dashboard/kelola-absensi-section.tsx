@@ -4,6 +4,8 @@
  * Section Kelola Absen Musyrif (admin): verifikasi absensi harian musyrif.
  * - Filter status (Semua/Menunggu/ACC/Ditolak) + rentang tanggal.
  * - ACC langsung; Tolak lewat dialog (bisa mencantumkan alasan).
+ * - Hapus permanen lewat dialog konfirmasi (record + foto di Storage hilang,
+ *   absen menjadi tidak tercatat) — tersedia untuk semua status.
  * - Realtime: section di-remount dashboard saat ada absensi baru (key absensiTick).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -11,6 +13,7 @@ import {
   BadgeCheck,
   Filter,
   RotateCcw,
+  Trash2,
   UserCheck,
   X,
 } from 'lucide-react'
@@ -145,6 +148,28 @@ export default function KelolaAbsensiSection() {
     setTolakCatatan('')
   }
 
+  // ===== Aksi Hapus (permanen, semua status) =====
+  const [hapusTarget, setHapusTarget] = useState<AbsensiMusyrifItem | null>(null)
+  const [hapusLoading, setHapusLoading] = useState(false)
+
+  const submitHapus = async () => {
+    if (!hapusTarget) return
+    setHapusLoading(true)
+    try {
+      await api(`/api/absensi/admin/${hapusTarget.id}`, { method: 'DELETE' })
+      setItems((prev) => prev.filter((it) => it.id !== hapusTarget.id))
+      toast.success(
+        `Absensi ${hapusTarget.musyrifNama} dihapus dan tidak tercatat`,
+        { description: 'Data serta foto absensi telah dihapus permanen.' }
+      )
+      setHapusTarget(null)
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setHapusLoading(false)
+    }
+  }
+
   // ===== Dialog foto =====
   const [foto, setFoto] = useState<AbsensiMusyrifItem | null>(null)
 
@@ -157,7 +182,7 @@ export default function KelolaAbsensiSection() {
     <div className="space-y-6">
       <SectionHeader
         title="Kelola Absen Musyrif"
-        description="Verifikasi absensi harian musyrif — ACC bila sesuai, tolak bila tidak valid."
+        description="Verifikasi absensi harian musyrif — ACC bila sesuai, tolak bila tidak valid, atau hapus permanen agar tidak tercatat."
       >
         <Button variant="outline" size="sm" onClick={muat} disabled={loading}>
           <RotateCcw className="h-4 w-4" /> Muat ulang
@@ -294,34 +319,46 @@ export default function KelolaAbsensiSection() {
                         {item.keterangan ?? <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-right">
-                        {item.status === 'PENDING' ? (
-                          <div className="flex justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              onClick={() => patchAksi(item.id, 'ACC')}
-                              disabled={aksiLoading !== null}
-                              aria-label={`ACC absensi ${item.musyrifNama}`}
-                            >
-                              {spinner(item.id + 'ACC')}
-                              <BadgeCheck className="h-4 w-4" /> ACC
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              onClick={() => {
-                                setTolakTarget(item)
-                                setTolakCatatan('')
-                              }}
-                              disabled={aksiLoading !== null}
-                              aria-label={`Tolak absensi ${item.musyrifNama}`}
-                            >
-                              <X className="h-4 w-4" /> Tolak
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Selesai</span>
-                        )}
+                        <div className="flex items-center justify-end gap-1.5">
+                          {item.status === 'PENDING' ? (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => patchAksi(item.id, 'ACC')}
+                                disabled={aksiLoading !== null || hapusLoading}
+                                aria-label={`ACC absensi ${item.musyrifNama}`}
+                              >
+                                {spinner(item.id + 'ACC')}
+                                <BadgeCheck className="h-4 w-4" /> ACC
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => {
+                                  setTolakTarget(item)
+                                  setTolakCatatan('')
+                                }}
+                                disabled={aksiLoading !== null || hapusLoading}
+                                aria-label={`Tolak absensi ${item.musyrifNama}`}
+                              >
+                                <X className="h-4 w-4" /> Tolak
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Selesai</span>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => setHapusTarget(item)}
+                            disabled={aksiLoading !== null || hapusLoading}
+                            aria-label={`Hapus absensi ${item.musyrifNama}`}
+                          >
+                            <Trash2 className="h-4 w-4" /> Hapus
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -366,11 +403,11 @@ export default function KelolaAbsensiSection() {
                     </div>
                   </div>
                   {item.status === 'PENDING' ? (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="mt-3 grid grid-cols-3 gap-2">
                       <Button
                         size="sm"
                         onClick={() => patchAksi(item.id, 'ACC')}
-                        disabled={aksiLoading !== null}
+                        disabled={aksiLoading !== null || hapusLoading}
                       >
                         {spinner(item.id + 'ACC')}
                         <BadgeCheck className="h-4 w-4" /> ACC
@@ -383,12 +420,31 @@ export default function KelolaAbsensiSection() {
                           setTolakTarget(item)
                           setTolakCatatan('')
                         }}
-                        disabled={aksiLoading !== null}
+                        disabled={aksiLoading !== null || hapusLoading}
                       >
                         <X className="h-4 w-4" /> Tolak
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setHapusTarget(item)}
+                        disabled={aksiLoading !== null || hapusLoading}
+                      >
+                        <Trash2 className="h-4 w-4" /> Hapus
+                      </Button>
                     </div>
-                  ) : null}
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 w-full border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setHapusTarget(item)}
+                      disabled={aksiLoading !== null || hapusLoading}
+                    >
+                      <Trash2 className="h-4 w-4" /> Hapus Absensi
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -439,6 +495,40 @@ export default function KelolaAbsensiSection() {
                 <X className="h-4 w-4" />
               )}
               Tolak Absensi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog konfirmasi hapus permanen */}
+      <Dialog
+        open={Boolean(hapusTarget)}
+        onOpenChange={(open) => {
+          if (!open && !hapusLoading) setHapusTarget(null)
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" /> Hapus Absensi Permanen
+            </DialogTitle>
+            <DialogDescription>
+              {hapusTarget
+                ? `Hapus absensi ${hapusTarget.musyrifNama} tanggal ${formatTanggalIndo(hapusTarget.tanggal)} pukul ${hapusTarget.jam.slice(0, 5)} WIB? Data dan foto absensi akan dihapus permanen sehingga tidak tercatat. Tindakan ini tidak bisa dibatalkan.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHapusTarget(null)} disabled={hapusLoading}>
+              Batal
+            </Button>
+            <Button variant="destructive" onClick={submitHapus} disabled={hapusLoading}>
+              {hapusLoading ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Hapus Permanen
             </Button>
           </DialogFooter>
         </DialogContent>
