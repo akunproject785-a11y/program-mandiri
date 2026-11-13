@@ -120,3 +120,33 @@ Stage Summary:
   kompatibel"), atau kirim foto via Chrome terbaru.
 - Bukti uji: download/tampilan-website/44-uji-heic-preview-lokal.png,
   44-uji-foto-besar-preview.png
+
+---
+Task ID: 45
+Agent: Z.ai (main)
+Task: Deploy Task 44 + verifikasi produksi + sinkron GitHub (pengguna memberi
+token Vercel & GitHub baru)
+
+- Token vercel vcp_8EICmB… valid (v2/user 200, project prj_BCvEzaDlqX3PiMgbfv
+  Xg89S0p1yX terbaca). .vercel/project.json dibuat ulang dengan projectId
+  asli; env produksi di-pull ke .env.local.
+- Deploy produksi SUKSES: program-mandiri-a2914yc39-akunproject785-9259.
+  vercel.app → https://program-mandiri.vercel.app (200). Bundle produksi
+  berisi kode HEIC (marker ftyp di chunks/97e24794cb183cd4.js).
+- E2E produksi (agent-browser, login amanda, tanggal 2026-11-13; hariIni
+  dicek null dulu agar tidak menimpa absen asli):
+  - File HEIC asli 55 KB diinjeksi ke popup "Jangan Lupa Absen!" (embed
+    base64; fetch localhost dari halaman publik diblokir Private Network
+    Access + CORS) → dikonversi otomatis → preview 9 KB JPEG 720×540 valid
+  - Kirim Absen → upload Supabase Storage sukses, record DB dibuat: status
+    PENDING jam 15:27:08 WIB, fotoUrl storage 200 (8.8 KB)
+  - Catatan: absen uji amanda 13 Nov 2026 ada di DB produksi (data demo);
+    admin bisa ACC/TOLAK seperti biasa.
+- GitHub: remote origin = akunproject785-a11y/program-mandiri; push main
+  dengan token (git push https://x-access-token:<token>@github.com/...).
+- Bukti: download/tampilan-website/45-prod-absen-heic-berhasil.png
+
+Stage Summary:
+- MASALAH HP SAMSUNG SELESAI DI PRODUKSI: HEIC otomatis dikonversi, fallback
+  decode berlapis, MIME kaku dihapus. Musyrif dengan setelan kamera apa pun
+  (HEIF/JPEG) kini bisa absen normal.
