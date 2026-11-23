@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAdmin } from '@/lib/auth'
-import { bacaUjianAktif } from '../../_lib/ujian'
+import { bacaUjianAktif, bacaTahunAjaran } from '../../_lib/ujian'
 import { isTanggalValid } from '../../absensi/_lib'
 import type { Prisma } from '@prisma/client'
 
@@ -38,6 +38,7 @@ function mapUjian(u: UjianWithRelasi) {
  *                muncul dengan total 0, agar kelengkapan terlihat).
  * ?musyrifId=… : detail daftar ujian musyrif tsb.
  * ?dari=&sampai= : filter rentang tanggal (YYYY-MM-DD), opsional.
+ * Rekapan & detail dibatasi pada tahun ajaran aktif yang diatur admin.
  */
 export async function GET(request: Request) {
   try {
@@ -54,26 +55,27 @@ export async function GET(request: Request) {
     if (sampai && isTanggalValid(sampai)) tanggalFilter.lte = sampai
     const pakaiRentang = Boolean(tanggalFilter.gte || tanggalFilter.lte)
 
-    const aktif = await bacaUjianAktif()
+    const [aktif, tahunAjaran] = await Promise.all([bacaUjianAktif(), bacaTahunAjaran()])
 
     if (musyrifId) {
       const detail = await db.ujian.findMany({
         where: {
           musyrifId,
+          tahunAjaran,
           ...(pakaiRentang ? { tanggal: tanggalFilter } : {}),
         },
         orderBy: [{ tanggal: 'desc' }, { createdAt: 'desc' }],
         take: 300,
         include: ujianInclude,
       })
-      return NextResponse.json({ aktif, rekap: [], detail: detail.map(mapUjian) })
+      return NextResponse.json({ aktif, tahunAjaran, rekap: [], detail: detail.map(mapUjian) })
     }
 
-    // Ringkasan per musyrif: semua musyrif + agregat ujiannya (left join style).
+    // Ringkasan per musyrif: semua musyrif + agregat ujian tahun ajaran aktif (left join style).
     const [musyrifRows, ujianRows] = await Promise.all([
       db.musyrif.findMany({ orderBy: { namaLengkap: 'asc' }, select: { id: true, namaLengkap: true } }),
       db.ujian.findMany({
-        where: pakaiRentang ? { tanggal: tanggalFilter } : {},
+        where: { tahunAjaran, ...(pakaiRentang ? { tanggal: tanggalFilter } : {}) },
         select: { musyrifId: true, siswaId: true, nilai: true, tanggal: true },
       }),
     ])
@@ -100,7 +102,7 @@ export async function GET(request: Request) {
       }
     })
 
-    return NextResponse.json({ aktif, rekap, detail: null })
+    return NextResponse.json({ aktif, tahunAjaran, rekap, detail: null })
   } catch (e) {
     console.error('[ujian/admin GET]', e)
     return NextResponse.json({ error: 'Terjadi kesalahan server' }, { status: 500 })

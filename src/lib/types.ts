@@ -382,6 +382,8 @@ export interface UjianSiswaOpsi {
 /** Respons GET /api/ujian/musyrif. */
 export interface UjianMusyrifData {
   aktif: boolean
+  /** Tahun ajaran aktif untuk data ujian ('' = belum diatur admin). */
+  tahunAjaran: string
   items: UjianItem[]
   /** Roster siswa halaqoh binaan (untuk form input). */
   siswa: UjianSiswaOpsi[]
@@ -392,6 +394,8 @@ export interface UjianMusyrifData {
 /** Respons GET /api/ujian/admin. */
 export interface UjianAdminData {
   aktif: boolean
+  /** Tahun ajaran aktif untuk data ujian ('' = belum diatur admin). */
+  tahunAjaran: string
   rekap: UjianRekapMusyrif[]
   /** Detail ujian satu musyrif (hanya saat query musyrifId diberikan). */
   detail: UjianItem[] | null

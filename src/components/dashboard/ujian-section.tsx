@@ -52,6 +52,9 @@ function NilaiUjianBadge({ nilai }: { nilai: number }) {
 
 export default function UjianSection() {
   const [aktif, setAktif] = useState<boolean | null>(null)
+  const [ta, setTa] = useState('')
+  const [taInput, setTaInput] = useState('')
+  const [taLoading, setTaLoading] = useState(false)
   const [rekap, setRekap] = useState<UjianRekapMusyrif[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -77,6 +80,8 @@ export default function UjianSection() {
       .then((data) => {
         if (!mounted) return
         setAktif(data.aktif)
+        setTa(data.tahunAjaran)
+        setTaInput((cur) => cur || data.tahunAjaran)
         setRekap(data.rekap)
       })
       .catch((err: Error) => {
@@ -91,6 +96,11 @@ export default function UjianSection() {
   }, [dari, sampai, refreshKey])
 
   const toggleAktif = async (nilai: boolean) => {
+    if (nilai && !ta) {
+      // Wajib isi tahun ajaran dulu — tanpa itu tidak ada data yang dipakai.
+      toast.error('Isi tahun ajaran terlebih dahulu sebelum mengaktifkan Ujian')
+      return
+    }
     const sebelum = aktif
     setAktif(nilai) // optimistis
     try {
@@ -99,13 +109,38 @@ export default function UjianSection() {
         nilai ? 'Menu Ujian musyrif diaktifkan' : 'Menu Ujian musyrif dinonaktifkan',
         {
           description: nilai
-            ? 'Semua musyrif kini melihat menu Ujian pada dashboard mereka.'
+            ? `Musyrif kini mencatat ujian untuk tahun ajaran ${ta}.`
             : 'Menu Ujian disembunyikan dari dashboard musyrif.',
         }
       )
     } catch (err) {
       setAktif(sebelum) // kembalikan bila gagal
       toast.error((err as Error).message)
+    }
+  }
+
+  const simpanTa = async () => {
+    const taBaru = taInput.trim()
+    if (!taBaru) {
+      toast.error('Tahun ajaran tidak boleh kosong')
+      return
+    }
+    setTaLoading(true)
+    try {
+      const res = await api<{ aktif: boolean; tahunAjaran: string }>('/api/setting-ujian', {
+        method: 'PATCH',
+        body: { tahunAjaran: taBaru },
+      })
+      setTa(res.tahunAjaran)
+      toast.success(`Tahun ajaran ${res.tahunAjaran} tersimpan`, {
+        description:
+          'Data yang digunakan kini milik tahun ajaran ini — musyrif menginput ulang TP & ujian baru; data tahun ajaran sebelumnya tetap tersimpan sebagai arsip.',
+      })
+      muat()
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setTaLoading(false)
     }
   }
 
@@ -146,33 +181,75 @@ export default function UjianSection() {
     <div className="space-y-6">
       <SectionHeader
         title="Ujian"
-        description="Aktifkan menu Ujian untuk musyrif dan pantau rekapan ujian dari masing-masing musyrif."
+        description={
+          ta
+            ? `Aktifkan menu Ujian untuk musyrif dan pantau rekapan ujian tahun ajaran ${ta} dari masing-masing musyrif.`
+            : 'Isi tahun ajaran terlebih dahulu, lalu aktifkan menu Ujian untuk musyrif.'
+        }
       >
         <Button variant="outline" size="sm" onClick={muat} disabled={loading}>
           <RotateCcw className="h-4 w-4" /> Muat ulang
         </Button>
       </SectionHeader>
 
-      {/* Aktivasi menu Ujian musyrif */}
+      {/* Tahun ajaran (prasyarat aktivasi) + aktivasi menu Ujian musyrif */}
       <Card>
-        <CardContent className="flex items-center justify-between gap-4 p-4">
-          <div className="min-w-0">
-            <p className="font-medium">Aktifkan Menu Ujian pada Dashboard Musyrif</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Saat aktif, musyrif melihat menu Ujian untuk mencatat hasil ujian hafalan siswa.
-              Saat nonaktif, menu disembunyikan dan pencatatan baru ditolak.
-            </p>
+        <CardContent className="space-y-4 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="font-medium">Aktifkan Menu Ujian pada Dashboard Musyrif</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Saat aktif, musyrif melihat menu Ujian untuk mencatat hasil ujian hafalan siswa.
+                Saat nonaktif, menu disembunyikan dan pencatatan baru ditolak.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col items-center gap-1">
+              <Switch
+                checked={aktif === true}
+                disabled={aktif === null}
+                onCheckedChange={toggleAktif}
+                aria-label="Aktifkan menu Ujian musyrif"
+              />
+              <span className="text-xs font-medium text-muted-foreground">
+                {aktif === null ? '…' : aktif ? 'Aktif' : 'Nonaktif'}
+              </span>
+            </div>
           </div>
-          <div className="flex shrink-0 flex-col items-center gap-1">
-            <Switch
-              checked={aktif === true}
-              disabled={aktif === null}
-              onCheckedChange={toggleAktif}
-              aria-label="Aktifkan menu Ujian musyrif"
-            />
-            <span className="text-xs font-medium text-muted-foreground">
-              {aktif === null ? '…' : aktif ? 'Aktif' : 'Nonaktif'}
-            </span>
+
+          <div className="rounded-lg border bg-muted/40 p-3">
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <CalendarRange className="h-4 w-4" /> Tahun Ajaran
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  ta
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                }`}
+              >
+                {ta ? `Aktif: ${ta}` : 'Belum diatur'}
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Wajib diisi sebelum mengaktifkan Ujian. Mengganti tahun ajaran memindahkan data yang
+              digunakan: musyrif menginput TP &amp; ujian baru untuk tahun ajaran tersebut, dan data
+              tahun ajaran sebelumnya tetap tersimpan sebagai arsip.
+            </p>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <Input
+                placeholder='mis. "2026/2027"'
+                value={taInput}
+                maxLength={30}
+                onChange={(e) => setTaInput(e.target.value)}
+                aria-label="Tahun ajaran ujian"
+                className="sm:w-44"
+              />
+              <Button size="sm" onClick={simpanTa} disabled={taLoading || !taInput.trim()}>
+                {taLoading ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : null}
+                Simpan Tahun Ajaran
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -342,6 +419,7 @@ export default function UjianSection() {
               {adaFilter
                 ? `Rentang: ${dari ? formatTanggalIndo(dari) : '…'} — ${sampai ? formatTanggalIndo(sampai) : '…'}`
                 : 'Seluruh ujian yang dicatat musyrif ini.'}
+              {ta ? ` Tahun Ajaran ${ta}.` : ''}
             </DialogDescription>
           </DialogHeader>
           {detailLoading || detail === null ? (

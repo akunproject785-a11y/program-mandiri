@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth'
+import { bacaTahunAjaran } from '../../_lib/ujian'
 
 /** Batas jumlah TP per kiriman dan panjang teks TP. */
 const MAX_TP_PER_POST = 30
 const MAX_PANJANG_TEKS = 200
 
 /**
- * POST /api/ujian/tp — simpan Tujuan Pembelajaran (TP) milik musyrif.
+ * POST /api/ujian/tp — simpan Tujuan Pembelajaran (TP) milik musyrif
+ * untuk TAHUN AJARAN AKTIF yang diatur admin.
  * Body: { teks: string[] } — musyrif menambah TP satu set sekaligus.
  * Minimal 2 TP tersimpan diperiksa saat pencatatan ujian (bukan di sini),
  * agar musyrif bisa menambah TP bertahap.
@@ -20,6 +22,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Hanya musyrif yang dapat mengelola TP' }, { status: 403 })
     }
     const musyrifId = auth.user.musyrifId
+
+    // TP selalu milik tahun ajaran aktif; bila belum diatur admin, tolak.
+    const tahunAjaran = await bacaTahunAjaran()
+    if (!tahunAjaran) {
+      return NextResponse.json(
+        { error: 'Tahun ajaran belum diatur admin — hubungi admin' },
+        { status: 403 }
+      )
+    }
 
     const body = (await request.json().catch(() => null)) as { teks?: unknown } | null
     const mentah = Array.isArray(body?.teks) ? (body?.teks as unknown[]) : []
@@ -42,19 +53,18 @@ export async function POST(request: Request) {
       )
     }
 
-    // Urutan lanjutan per musyrif agar penomoran TP deterministik
-    // (createMany menghasilkan createdAt identik — jangan andalkan itu).
+    // Urutan lanjutan per musyrif & tahun ajaran agar penomoran TP deterministik.
     const maks = await db.tpUjian.aggregate({
-      where: { musyrifId },
+      where: { musyrifId, tahunAjaran },
       _max: { urutan: true },
     })
     let urutan = (maks._max.urutan ?? 0) + 1
     for (const teks of bersih) {
-      await db.tpUjian.create({ data: { musyrifId, teks, urutan: urutan++ } })
+      await db.tpUjian.create({ data: { musyrifId, teks, urutan: urutan++, tahunAjaran } })
     }
 
     const tpRows = await db.tpUjian.findMany({
-      where: { musyrifId },
+      where: { musyrifId, tahunAjaran },
       orderBy: [{ urutan: 'asc' }, { createdAt: 'asc' }],
       select: { id: true, teks: true, _count: { select: { nilaiTp: true } } },
     })

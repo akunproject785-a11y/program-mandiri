@@ -356,3 +356,78 @@ Stage Summary:
   muncul, nilai per TP wajib lengkap, rata-rata tersimpan di Ujian.nilai,
   breakdown TP tampil untuk musyrif (klik baris) dan admin (dialog detail);
   data uji produksi dibersihkan; fitur tetap dalam status AKTIF.
+
+---
+Task ID: 50
+Agent: Z.ai (main)
+Task: "pada dashboard admin, sebelum mengaktifkan Ujian untuk musyrif, admin
+menginput dulu tahun ajaran, untuk nantinya ketika diinput tahun ajaran baru,
+data yang digunakan juga baru"
+
+Implementasi (Tahun Ajaran sebagai prasyarat & pemisah data Ujian):
+- Prisma (schema.prisma + schema.sqlite.prisma): kolom tahunAjaran String
+  default '' pada Ujian & TpUjian + index Ujian(tahunAjaran),
+  Ujian(musyrifId, tahunAjaran), TpUjian(musyrifId, tahunAjaran)
+  (index lama TpUjian(musyrifId) diganti).
+- Setting baru 'ujian_tahun_ajaran' ('' = belum diatur). Lib ujian:
+  KEY_TAHUN_AJARAN + bacaTahunAjaran().
+- PATCH /api/setting-ujian kini menerima { aktif?, tahunAjaran? }:
+  - Mengaktifkan Ujian (aktif=true) DITOLAK 400 bila tahun ajaran belum
+    terisi ("Isi tahun ajaran terlebih dahulu…") — validasi client + server.
+  - Simpan tahun ajaran baru kapan saja; mengganti TA memindahkan data yang
+    digunakan (filter), data TA lama tetap tersimpan sebagai arsip.
+- Semua endpoint data ujian kini difilter per TA aktif:
+  GET/POST /api/ujian/musyrif, POST /api/ujian/tp (create menyimpan TA; tolak
+  403 bila TA kosong), GET /api/ujian/admin (rekap & detail).
+- UI admin (ujian-section.tsx): kartu tahun ajaran (badge "Belum diatur"/
+  "Aktif: X", input + Simpan Tahun Ajaran + penjelasan perpindahan data);
+  toggle aktif diblok client bila TA kosong; header & dialog detail menyebut
+  TA aktif.
+- UI musyrif (ujian-musyrif-section.tsx): label "Tahun Ajaran X" di header;
+  bila menu aktif tapi TA belum diatur → EmptyState "Tahun ajaran belum
+  diatur" (form TP & ujian tidak tampil). Saat TA diganti, GET otomatis
+  kosong → gate TP 0/2 terkunci lagi (musyrif menginput TP baru).
+- Migrasi produksi: scripts/migrasi-tahun-ajaran-ujian.mjs (ADD COLUMN IF
+  NOT EXISTS ×2 + index + Setting '' — idempotent).
+- Fix saat E2E: kolom Ujian.tahunAjaran awalnya tanpa @default("") membuat
+  db push sqlite menolak (required column tanpa default) → diberi default.
+
+E2E lokal (sqlite, build hijau, data lokal utuh — push incremental):
+- Musyrif saat TA kosong → EmptyState "Tahun ajaran belum diatur".
+- Admin: toggle ON tanpa TA → diblok ("Isi tahun ajaran terlebih dahulu…"),
+  switch tetap Nonaktif; Simpan TA "2026/2027" → badge "Aktif: 2026/2027" +
+  toast perpindahan data; toggle ON → sukses ("…tahun ajaran 2026/2027").
+- Musyrif: label TA muncul, gate 0/2 terkunci (TP lama tidak terbawa); tambah
+  2 TP → form terbuka → ujian "Uji TA" (85/90 → rata 88) tersimpan; admin
+  rekap total 1.
+- Admin ganti TA "2027/2028" → rekap kosong; musyrif: label TA baru, gate
+  0/2 terkunci, daftar kosong — DATA YANG DIGUNAKAN JADI BARU ✓.
+- Bukti: download/tampilan-website/50-musyrif-ta-kosong.png,
+  50-admin-ta.png, 50-musyrif-tercatat.png, 50-admin-ganti-ta.png,
+  50-musyrif-ta-2027.png
+
+E2E produksi (program-mandiri.vercel.app):
+- Migrasi jalan (kolom + index + Setting TA ''), deploy o82c1817m.
+- Admin: badge "Belum diatur" → simpan TA "2026/2027" (tetap aktif).
+- Musyrif: label TA 2026/2027, gate 0/2 → 2 TP → ujian "Uji TA Produksi"
+  (85/90 → rata 88) tersimpan; admin rekap total 1 + dialog detail TA 2026/2027.
+- Cleanup data uji: hapus ujian + 2 TP → DB: TP/ujian milik E2E = 0; TA
+  '2026/2027'; aktif '1'.
+- Catatan data nyata: TP "Coba 1"/"Menjelaskan" + ujian "Juzsiyah" (dibuat
+  pengguna nyata era pra-TA / Task 49) kini ber-TA '' — otomatis menjadi
+  ARSIP dan tidak muncul di rekap TA 2026/2027 (sesuai perilaku "data yang
+  digunakan juga baru"); tidak dihapus.
+- Bukti: download/tampilan-website/50-prod-admin-ta.png,
+  50-prod-tercatat.png, 50-prod-admin-detail.png
+
+Catatan insiden (tanpa dampak data): awal E2E lokal, .env.local masih berisi
+env produksi (sisa vercel env pull Task 49) sehingga server lokal sempat
+terhubung DB produksi hanya untuk GET; dikonfirmasi tidak ada penulisan data
+lokal ke produksi, .env.local segera dikembalikan ke env lokal-sqlite.
+
+Stage Summary:
+- TAHUN AJARAN WAJIB SEBELUM AKTIVASI UJIAN: admin tidak dapat mengaktifkan
+  menu tanpa mengisi tahun ajaran; seluruh data TP & ujian difilter per TA
+  aktif; mengganti TA membuat musyrif mulai dari data kosong (TP 0 → gate
+  terkunci), data TA sebelumnya tersimpan sebagai arsip. Produksi berjalan
+  dengan TA aktif "2026/2027".

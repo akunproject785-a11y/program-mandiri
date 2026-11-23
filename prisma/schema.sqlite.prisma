@@ -107,6 +107,8 @@ model Ujian {
   /** Nilai ujian 0-100. */
   nilai     Int
   catatan   String?
+  /** Tahun ajaran data ini (mis. "2026/2027") — dipisahkan per tahun ajaran yang diatur admin. */
+  tahunAjaran String @default("")
   musyrif   Musyrif @relation(fields: [musyrifId], references: [id], onDelete: Cascade)
   siswa     Siswa   @relation(fields: [siswaId], references: [id], onDelete: Cascade)
   nilaiTp   NilaiTp[]
@@ -115,6 +117,8 @@ model Ujian {
 
   @@index([musyrifId, tanggal])
   @@index([siswaId])
+  @@index([tahunAjaran])
+  @@index([musyrifId, tahunAjaran])
 }
 
 /**
@@ -123,17 +127,19 @@ model Ujian {
  * nilai ujian per siswa dihitung berdasarkan TP-TP ini.
  */
 model TpUjian {
-  id        String    @id @default(cuid())
-  musyrifId String
+  id          String    @id @default(cuid())
+  musyrifId   String
   /** Deskripsi TP (mis. "Siswa lancar membaca juz 30"). */
-  teks      String
+  teks        String
   /** Urutan tampil TP (per musyrif) — penomoran TP1, TP2, … deterministik. */
-  urutan    Int       @default(0)
-  musyrif   Musyrif   @relation(fields: [musyrifId], references: [id], onDelete: Cascade)
-  nilaiTp   NilaiTp[]
-  createdAt DateTime  @default(now())
+  urutan      Int       @default(0)
+  /** Tahun ajaran data ini — TP lama tidak terlihat saat admin mengatur tahun ajaran baru. */
+  tahunAjaran String    @default("")
+  musyrif     Musyrif   @relation(fields: [musyrifId], references: [id], onDelete: Cascade)
+  nilaiTp     NilaiTp[]
+  createdAt   DateTime  @default(now())
 
-  @@index([musyrifId])
+  @@index([musyrifId, tahunAjaran])
 }
 
 /** Nilai per TP untuk satu ujian siswa — breakdown nilai ujian per Tujuan Pembelajaran. */

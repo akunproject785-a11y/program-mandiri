@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth'
 import { getHalaqohIdsForMusyrif } from '../../_lib/shared'
-import { bacaUjianAktif } from '../../_lib/ujian'
+import { bacaUjianAktif, bacaTahunAjaran } from '../../_lib/ujian'
 import { isTanggalValid } from '../../absensi/_lib'
 import type { Prisma } from '@prisma/client'
 
@@ -38,6 +38,7 @@ export const MIN_TP_UJIAN = 2
 /**
  * GET /api/ujian/musyrif — daftar ujian milik musyrif (dengan breakdown per TP)
  * + daftar TP miliknya + roster siswa halaqoh binaan.
+ * Data (ujian & TP) difilter per tahun ajaran aktif yang diatur admin.
  */
 export async function GET() {
   try {
@@ -48,11 +49,12 @@ export async function GET() {
     }
     const musyrifId = auth.user.musyrifId
     const scopeIds = await getHalaqohIdsForMusyrif(musyrifId)
+    const tahunAjaran = await bacaTahunAjaran()
 
     const [aktif, items, siswaRows, tpRows] = await Promise.all([
       bacaUjianAktif(),
       db.ujian.findMany({
-        where: { musyrifId },
+        where: { musyrifId, tahunAjaran },
         orderBy: [{ tanggal: 'desc' }, { createdAt: 'desc' }],
         take: 200,
         include: ujianInclude,
@@ -63,7 +65,7 @@ export async function GET() {
         select: { id: true, nama: true, kelas: true, halaqoh: { select: { nama: true } } },
       }),
       db.tpUjian.findMany({
-        where: { musyrifId },
+        where: { musyrifId, tahunAjaran },
         orderBy: [{ urutan: 'asc' }, { createdAt: 'asc' }],
         select: { id: true, teks: true, _count: { select: { nilaiTp: true } } },
       }),
@@ -71,6 +73,7 @@ export async function GET() {
 
     return NextResponse.json({
       aktif,
+      tahunAjaran,
       items: items.map(mapUjian),
       siswa: siswaRows.map((s) => ({
         id: s.id,
@@ -109,6 +112,16 @@ export async function POST(request: Request) {
       )
     }
 
+    // Data ujian selalu memakai tahun ajaran aktif; bila admin belum mengaturnya,
+    // pencatatan ditolak agar tidak ada data di luar tahun ajaran.
+    const tahunAjaran = await bacaTahunAjaran()
+    if (!tahunAjaran) {
+      return NextResponse.json(
+        { error: 'Tahun ajaran belum diatur admin — hubungi admin' },
+        { status: 403 }
+      )
+    }
+
     const body = (await request.json().catch(() => null)) as {
       siswaId?: string
       tanggal?: string
@@ -125,9 +138,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // TP milik musyrif — minimal 2 dan semua wajib dinilai.
+    // TP milik musyrif pada tahun ajaran aktif — minimal 2 dan semua wajib dinilai.
     const tpRows = await db.tpUjian.findMany({
-      where: { musyrifId },
+      where: { musyrifId, tahunAjaran },
       orderBy: [{ urutan: 'asc' }, { createdAt: 'asc' }],
       select: { id: true },
     })
@@ -182,6 +195,7 @@ export async function POST(request: Request) {
           bab: body.bab?.trim() ? body.bab.trim().slice(0, 200) : null,
           nilai: rata,
           catatan: body.catatan?.trim() ? body.catatan.trim().slice(0, 300) : null,
+          tahunAjaran,
         },
         include: ujianInclude,
       })

@@ -13,6 +13,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   BookOpenCheck,
+  CalendarRange,
   ChevronDown,
   ChevronRight,
   FileCheck,
@@ -224,11 +225,25 @@ export default function UjianMusyrifSection() {
     )
   }
 
+  // Menu aktif tapi admin belum mengatur tahun ajaran — belum ada data yang dipakai.
+  if (!data.tahunAjaran) {
+    return (
+      <div className="space-y-6">
+        <SectionHeader title="Ujian" description="Catat hasil ujian hafalan siswa halaqoh binaan." />
+        <EmptyState
+          icon={<CalendarRange />}
+          title="Tahun ajaran belum diatur"
+          description="Admin belum mengisi tahun ajaran untuk data ujian. Hubungi admin agar tahun ajaran diatur terlebih dahulu."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <SectionHeader
         title="Ujian"
-        description="Tahap 1: input Tujuan Pembelajaran (minimal 2). Tahap 2: catat ujian siswa dengan nilai per TP."
+        description={`Tahun Ajaran ${data.tahunAjaran}. Tahap 1: input Tujuan Pembelajaran (minimal 2). Tahap 2: catat ujian siswa dengan nilai per TP.`}
       >
         <Button variant="outline" size="sm" onClick={muat} disabled={loading}>
           <RotateCcw className="h-4 w-4" /> Muat ulang
