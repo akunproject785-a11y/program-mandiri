@@ -431,3 +431,60 @@ Stage Summary:
   aktif; mengganti TA membuat musyrif mulai dari data kosong (TP 0 → gate
   terkunci), data TA sebelumnya tersimpan sebagai arsip. Produksi berjalan
   dengan TA aktif "2026/2027".
+
+---
+Task ID: 51
+Agent: Z.ai (main)
+Task: "Untuk Tahun Ajaran dibuat tambahkan dulu baru aktif, supaya admin bisa
+mengubah Tahun ajaran baik yang baru maupun yang telah lalu"
+
+Implementasi (Tahun Ajaran menjadi DAFTAR — tambah dulu, baru aktifkan):
+- Prisma (schema.prisma + schema.sqlite.prisma): model TahunAjaran baru
+  { id, label unik (tidak dapat diubah), aktif Boolean, createdAt }.
+  bacaTahunAjaran() kini membaca baris aktif dari tabel ini (bukan Setting).
+- API baru /api/ujian/tahun-ajaran (admin):
+  - GET daftar { label, aktif, jumlahUjian, jumlahTp } (aktif di atas).
+  - POST tambah TA baru (belum aktif; entri PERTAMA otomatis aktif bila belum
+    ada yang aktif agar alur tidak buntu; label duplikat ditolak).
+  - PATCH [id] aktifkan: transaction updateMany(aktif=false) + update target —
+    tepat satu TA aktif; mengaktifkan TA lalu mengembalikan datanya.
+  - DELETE [id]: ditolak untuk TA aktif dan TA yang sudah dipakai data
+    ujian/TP (tetap arsip); TA kosong boleh dihapus.
+- PATCH /api/setting-ujian kembali murni toggle aktif; syarat ON: ada TA aktif
+  (pesan: "Tambah dan aktifkan tahun ajaran terlebih dahulu…").
+- UI admin: kartu Tahun Ajaran kini DAFTAR (baris per TA: label + badge "Aktif"
+  + jumlah ujian•TP + tombol Aktifkan + hapus untuk non-aktif) + input
+  "Tambah Tahun Ajaran"; ConfirmDialog hapus; toast penjelasan perpindahan data.
+- Musyrif tidak berubah perilaku (selalu memakai label TA aktif).
+
+Migrasi produksi: scripts/migrasi-tahun-ajaran-tabel.mjs (CREATE TABLE IF NOT
+EXISTS + seed dari Setting 'ujian_tahun_ajaran' → TA "2026/2027" AKTIF +
+Setting lama dihapus; idempotent).
+
+E2E lokal: admin — daftar "2026/2027 Aktif (1 ujian • 2 TP)"; tambah
+"2027/2028" (masih non-aktif) → aktifkan → badge pindah & rekap kosong →
+aktifkan KEMBALI "2026/2027" → rekap total 1 muncul lagi (data lama kembali) →
+hapus "2027/2028" (0 data) via dialog → hilang. Musyrif: label TA + form tetap
+jalan (gate 2/2 dari TA aktif).
+Bukti: 51-admin-dua-ta.png, 51-admin-daftar-ta.png
+
+E2E produksi (deploy hc465too9): daftar seed "2026/2027 Aktif"; tambah
+"2027/2028" → aktifkan → kembali ke 2026/2027 → hapus 2027/2028 — semua ok;
+DB final: [{"label":"2026/2027","aktif":true}], Setting 'ujian_tahun_ajaran'
+hapus. Musyrif prod: menu Ujian tampil, label TA, gate 0/2 terkunci.
+Bukti: 51-prod-ta.png, 51-prod-musyrif.png
+
+Catatan operasional:
+- Setting 'ujian_musyrif_aktif' ditemukan '0' di produksi (dimatikan lewat UI
+  oleh pengguna nyata di antara Task 50–51) sehingga menu Ujian sempat hilang
+  dari dashboard musyrif — dinyalakan kembali via toggle admin pada E2E ini.
+- Insiden env berulang: server lokal sempat start dengan env produksi (sisa
+  env-pull sebelumnya) sebelum E2E lokal — hanya GET yang terjadi, tidak ada
+  penulisan; .env.local kini dikembalikan ke env lokal-sqlite di akhir task
+  dan env-pull produksi hanya dilakukan tepat sebelum migrasi/deploy.
+
+Stage Summary:
+- TAHUN AJARAN KINI SEBUAH DAFTAR: admin menambah TA dulu, mengaktifkan salah
+  satu (baru ATAU lalu — bolak-balik bisa), melihat jumlah data per TA, dan
+  menghapus TA yang belum dipakai. Produksi: TA aktif "2026/2027", data era
+  pra-TA tetap arsip.

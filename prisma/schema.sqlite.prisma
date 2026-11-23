@@ -192,6 +192,21 @@ model Setting {
 }
 
 /**
+ * Daftar tahun ajaran yang dikelola admin untuk data ujian (menu Ujian).
+ * Admin menambah tahun ajaran terlebih dahulu, lalu mengaktifkan salah satu
+ * (baru maupun yang lalu) — data TP & ujian terpisah per label tahun ajaran;
+ * mengaktifkan kembali tahun ajaran lalu mengembalikan datanya.
+ */
+model TahunAjaran {
+  id        String   @id @default(cuid())
+  /** Label tahun ajaran (mis. "2026/2027") — unik dan tidak dapat diubah. */
+  label     String   @unique
+  /** Penanda tahun ajaran aktif (tepat satu) yang dipakai input & rekap ujian. */
+  aktif     Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+/**
  * Absensi harian musyrif dengan foto selfie.
  * - tanggal (string "YYYY-MM-DD", zona WIB) unik per musyrif — absen ulang pada
  * hari yang sama menimpa record lama dan mengembalikan status ke PENDING.

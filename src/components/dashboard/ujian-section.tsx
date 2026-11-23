@@ -9,11 +9,11 @@
  *    lengkap ujian musyrif terpilih.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpenCheck, CalendarRange, FileCheck, RotateCcw, X } from 'lucide-react'
+import { BookOpenCheck, CalendarRange, FileCheck, RotateCcw, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/client'
 import { formatTanggalIndo } from '@/lib/format'
-import type { UjianAdminData, UjianItem, UjianRekapMusyrif } from '@/lib/types'
+import type { TahunAjaranItem, UjianAdminData, UjianItem, UjianRekapMusyrif } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -33,7 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { EmptyState, LoadingBlock, SectionHeader } from '@/components/dashboard/ui-helpers'
+import { ConfirmDialog, EmptyState, LoadingBlock, SectionHeader } from '@/components/dashboard/ui-helpers'
 
 /** Warna nilai: < 60 merah, 60–79 amber, >= 80 hijau. */
 function NilaiUjianBadge({ nilai }: { nilai: number }) {
@@ -53,8 +53,10 @@ function NilaiUjianBadge({ nilai }: { nilai: number }) {
 export default function UjianSection() {
   const [aktif, setAktif] = useState<boolean | null>(null)
   const [ta, setTa] = useState('')
-  const [taInput, setTaInput] = useState('')
+  const [daftarTa, setDaftarTa] = useState<TahunAjaranItem[]>([])
+  const [taBaru, setTaBaru] = useState('')
   const [taLoading, setTaLoading] = useState(false)
+  const [hapusTa, setHapusTa] = useState<TahunAjaranItem | null>(null)
   const [rekap, setRekap] = useState<UjianRekapMusyrif[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -76,13 +78,16 @@ export default function UjianSection() {
     if (dari) params.set('dari', dari)
     if (sampai) params.set('sampai', sampai)
     const qs = params.toString()
-    api<UjianAdminData>(`/api/ujian/admin${qs ? `?${qs}` : ''}`)
-      .then((data) => {
+    Promise.all([
+      api<UjianAdminData>(`/api/ujian/admin${qs ? `?${qs}` : ''}`),
+      api<{ items: TahunAjaranItem[] }>('/api/ujian/tahun-ajaran').catch(() => null),
+    ])
+      .then(([adminData, taData]) => {
         if (!mounted) return
-        setAktif(data.aktif)
-        setTa(data.tahunAjaran)
-        setTaInput((cur) => cur || data.tahunAjaran)
-        setRekap(data.rekap)
+        setAktif(adminData.aktif)
+        setTa(adminData.tahunAjaran)
+        setRekap(adminData.rekap)
+        if (taData) setDaftarTa(taData.items)
       })
       .catch((err: Error) => {
         if (mounted) toast.error(err.message)
@@ -97,8 +102,8 @@ export default function UjianSection() {
 
   const toggleAktif = async (nilai: boolean) => {
     if (nilai && !ta) {
-      // Wajib isi tahun ajaran dulu — tanpa itu tidak ada data yang dipakai.
-      toast.error('Isi tahun ajaran terlebih dahulu sebelum mengaktifkan Ujian')
+      // Wajib ada tahun ajaran aktif dulu — tanpa itu tidak ada data yang dipakai.
+      toast.error('Tambah dan aktifkan tahun ajaran terlebih dahulu sebelum mengaktifkan Ujian')
       return
     }
     const sebelum = aktif
@@ -119,28 +124,56 @@ export default function UjianSection() {
     }
   }
 
-  const simpanTa = async () => {
-    const taBaru = taInput.trim()
-    if (!taBaru) {
-      toast.error('Tahun ajaran tidak boleh kosong')
+  const tambahTa = async () => {
+    const label = taBaru.trim()
+    if (!label) {
+      toast.error('Isi label tahun ajaran (mis. "2027/2028")')
       return
     }
     setTaLoading(true)
     try {
-      const res = await api<{ aktif: boolean; tahunAjaran: string }>('/api/setting-ujian', {
-        method: 'PATCH',
-        body: { tahunAjaran: taBaru },
+      const res = await api<{ items: TahunAjaranItem[] }>('/api/ujian/tahun-ajaran', {
+        method: 'POST',
+        body: { label },
       })
-      setTa(res.tahunAjaran)
-      toast.success(`Tahun ajaran ${res.tahunAjaran} tersimpan`, {
-        description:
-          'Data yang digunakan kini milik tahun ajaran ini — musyrif menginput ulang TP & ujian baru; data tahun ajaran sebelumnya tetap tersimpan sebagai arsip.',
+      setDaftarTa(res.items)
+      setTaBaru('')
+      toast.success(`Tahun ajaran ${label} ditambahkan`, {
+        description: 'Tekan "Aktifkan" pada tahun ajaran tersebut untuk memakai datanya.',
       })
       muat()
     } catch (err) {
       toast.error((err as Error).message)
     } finally {
       setTaLoading(false)
+    }
+  }
+
+  const aktifkanTa = async (t: TahunAjaranItem) => {
+    try {
+      await api(`/api/ujian/tahun-ajaran/${t.id}`, { method: 'PATCH' })
+      setDaftarTa((prev) => prev.map((x) => ({ ...x, aktif: x.id === t.id })))
+      setTa(t.label)
+      toast.success(`Tahun ajaran ${t.label} kini aktif`, {
+        description:
+          'Data yang digunakan berpindah ke tahun ajaran ini — data tahun ajaran lain tetap tersimpan dan dapat diaktifkan kembali.',
+      })
+      muat()
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
+  const konfirmHapusTa = async () => {
+    if (!hapusTa) return
+    const target = hapusTa
+    setHapusTa(null)
+    try {
+      await api(`/api/ujian/tahun-ajaran/${target.id}`, { method: 'DELETE' })
+      setDaftarTa((prev) => prev.filter((x) => x.id !== target.id))
+      toast.success(`Tahun ajaran ${target.label} dihapus`)
+    } catch (err) {
+      toast.error((err as Error).message)
     }
   }
 
@@ -226,33 +259,96 @@ export default function UjianSection() {
                     : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                 }`}
               >
-                {ta ? `Aktif: ${ta}` : 'Belum diatur'}
+                {ta ? `Aktif: ${ta}` : 'Belum ada'}
               </span>
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Wajib diisi sebelum mengaktifkan Ujian. Mengganti tahun ajaran memindahkan data yang
-              digunakan: musyrif menginput TP &amp; ujian baru untuk tahun ajaran tersebut, dan data
-              tahun ajaran sebelumnya tetap tersimpan sebagai arsip.
+              Tambahkan tahun ajaran terlebih dahulu, lalu aktifkan salah satu (baru maupun yang
+              lalu). Data TP &amp; ujian terpisah per tahun ajaran — mengaktifkan tahun ajaran lain
+              memindahkan data yang digunakan, dan data sebelumnya tetap tersimpan untuk bisa
+              diaktifkan kembali.
             </p>
+
+            {daftarTa.length > 0 ? (
+              <ul className="mt-2 space-y-1.5">
+                {daftarTa.map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-background px-3 py-2"
+                  >
+                    <span className="min-w-0 text-sm">
+                      <span className="font-semibold">{t.label}</span>
+                      {t.aktif ? (
+                        <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          Aktif
+                        </span>
+                      ) : null}
+                      <span className="ml-2 text-xs text-muted-foreground tabular-nums">
+                        {t.jumlahUjian} ujian • {t.jumlahTp} TP
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      {!t.aktif ? (
+                        <Button size="sm" variant="outline" className="h-7" onClick={() => aktifkanTa(t)}>
+                          Aktifkan
+                        </Button>
+                      ) : null}
+                      {!t.aktif ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          onClick={() => setHapusTa(t)}
+                          aria-label={`Hapus tahun ajaran ${t.label}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 rounded-md bg-background px-3 py-2 text-sm text-muted-foreground">
+                Belum ada tahun ajaran — tambahkan terlebih dahulu di bawah.
+              </p>
+            )}
+
             <div className="mt-2 flex flex-col gap-2 sm:flex-row">
               <Input
-                placeholder='mis. "2026/2027"'
-                value={taInput}
+                placeholder='Tahun ajaran baru — mis. "2027/2028"'
+                value={taBaru}
                 maxLength={30}
-                onChange={(e) => setTaInput(e.target.value)}
-                aria-label="Tahun ajaran ujian"
-                className="sm:w-44"
+                onChange={(e) => setTaBaru(e.target.value)}
+                aria-label="Tahun ajaran baru"
+                className="sm:w-56"
               />
-              <Button size="sm" onClick={simpanTa} disabled={taLoading || !taInput.trim()}>
+              <Button size="sm" onClick={tambahTa} disabled={taLoading || !taBaru.trim()}>
                 {taLoading ? (
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                 ) : null}
-                Simpan Tahun Ajaran
+                Tambah Tahun Ajaran
               </Button>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Konfirmasi hapus tahun ajaran */}
+      <ConfirmDialog
+        open={hapusTa !== null}
+        onOpenChange={(v) => {
+          if (!v) setHapusTa(null)
+        }}
+        title={`Hapus tahun ajaran ${hapusTa?.label ?? ''}?`}
+        description={
+          hapusTa && (hapusTa.jumlahUjian > 0 || hapusTa.jumlahTp > 0)
+            ? `Tahun ajaran ini sudah dipakai ${hapusTa.jumlahUjian} ujian dan ${hapusTa.jumlahTp} TP sehingga tidak dapat dihapus.`
+            : 'Tahun ajaran yang belum dipakai data akan dihapus permanen.'
+        }
+        confirmText="Hapus"
+        onConfirm={konfirmHapusTa}
+      />
 
       {/* Statistik */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

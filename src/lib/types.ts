@@ -391,10 +391,23 @@ export interface UjianMusyrifData {
   tp: UjianTpItem[]
 }
 
+/** Satu entri daftar tahun ajaran pada menu Ujian admin. */
+export interface TahunAjaranItem {
+  id: string
+  /** Label tahun ajaran (mis. "2026/2027") — unik, tidak dapat diubah. */
+  label: string
+  /** Tahun ajaran yang sedang aktif (tepat satu). */
+  aktif: boolean
+  /** Jumlah ujian yang memakai tahun ajaran ini. */
+  jumlahUjian: number
+  /** Jumlah TP yang memakai tahun ajaran ini. */
+  jumlahTp: number
+}
+
 /** Respons GET /api/ujian/admin. */
 export interface UjianAdminData {
   aktif: boolean
-  /** Tahun ajaran aktif untuk data ujian ('' = belum diatur admin). */
+  /** Tahun ajaran aktif untuk data ujian ('' = belum ada yang aktif). */
   tahunAjaran: string
   rekap: UjianRekapMusyrif[]
   /** Detail ujian satu musyrif (hanya saat query musyrifId diberikan). */
