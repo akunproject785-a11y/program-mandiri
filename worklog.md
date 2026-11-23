@@ -590,3 +590,25 @@ Stage Summary:
 - Menu "Hasil Ujian" (musyrif) siap di kode: rekap nilai urut tertinggi,
   sertifikat untuk 3 teratas, raport untuk semua — teruji lokal. DEPLOY
   PRODUKSI MENUNGGU TOKEN VERCEL BARU (token lama diblokir SAML scope).
+
+Task ID: 53 (lanjutan — deploy & push setelah token diberikan pengguna)
+Agent: Z.ai (main)
+- Token vercel & github baru diberikan pengguna → valid ✓ (akses team scope OK).
+- DEPLOY KE PROJECT YANG BENAR: percobaan pertama `vercel deploy` jatuh ke
+  project LAMA "my-project" (.vercel/project.json menunjuk prj_JH8OwXIV…)
+  sehingga alias program-mandiri masih kode lama; diulang dengan
+  `--project=program-mandiri` → deployment dpl_71MewW1Z READY (alias
+  program-mandiri.vercel.app sekarang memuat fitur Task 53).
+- Produksi disiapkan untuk fitur: admin menambah & mengaktifkan TA
+  "2026/2027" (menyelamatkan kondisi tanpa TA pasca Task 52) + toggle menu
+  Ujian ON (DB: ujian_musyrif_aktif='1', TahunAjaran 2026/2027 aktif).
+- E2E produksi (musyrif amanda): menu sidebar "Hasil Ujian" MUNCUL di bawah
+  menu Ujian, diklik → empty state "Belum ada hasil ujian" + deskripsi tahun
+  ajaran 2026/2027 (belum ada data ujian). Sistem siap dipakai: musyrif
+  mengisi TP & mencatat ujian di menu Ujian, hasilnya otomatis masuk rekap
+  Hasil Ujian dengan sertifikat (3 teratas) & raport (semua).
+- Bukti: 53-prod-hasil-ujian.png
+- Push GitHub sukses: 1940521..bcf5282 main → main (Task 52 & 53).
+- Catatan operasional: `vercel deploy` TANPA --project jatuh ke project
+  "my-project" lama (lihat .vercel/project.json) — selalu pakai
+  --project=program-mandiri.
