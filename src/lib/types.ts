@@ -391,6 +391,29 @@ export interface UjianMusyrifData {
   tp: UjianTpItem[]
 }
 
+/** Rekap hasil ujian satu siswa untuk menu "Hasil Ujian" musyrif. */
+export interface HasilUjianItem {
+  siswaId: string
+  siswaNama: string
+  halaqohNama: string
+  /** Jumlah ujian yang sudah dicatat untuk siswa ini. */
+  jumlahUjian: number
+  /** Rata-rata nilai seluruh ujian siswa (0–100). */
+  rataNilai: number
+  /** Detail seluruh ujian siswa (urut tanggal terbaru) — bahan cetak raport. */
+  detail: UjianItem[]
+}
+
+/** Respons GET /api/ujian/hasil. */
+export interface HasilUjianData {
+  aktif: boolean
+  /** Tahun ajaran aktif untuk data ujian ('' = belum ada yang aktif). */
+  tahunAjaran: string
+  musyrifNama: string
+  /** Terurut nilai tertinggi; 3 teratas layak mencetak sertifikat. */
+  items: HasilUjianItem[]
+}
+
 /** Satu entri daftar tahun ajaran pada menu Ujian admin. */
 export interface TahunAjaranItem {
   id: string

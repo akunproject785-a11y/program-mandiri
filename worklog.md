@@ -537,3 +537,56 @@ Stage Summary:
   ujian/TP milik TA itu secara otomatis; TA aktif boleh dihapus dengan
   pengalihan otomatis (TA lain aktif, atau menu Ujian dimatikan bila
   satu-satunya). Produksi: TA 2027/2028 telah dihapus.
+
+---
+Task ID: 53
+Agent: Z.ai (main)
+Task: "pada dashboard musyrif, tambahkan menu Hasil Ujian ketika menu ujian
+pada admin diaktifkan. isinya rekapan dari semua nilai yang sudah ujian
+kemudian urutkan berdasarkan nilai tertinggi, 3 tertinggi akan muncul tombol
+cetak sertifikat dan untuk semuanya ada menu Cetak Raport"
+
+Implementasi:
+- API baru GET /api/ujian/hasil (musyrif-only): seluruh ujian musyrif pada
+  tahun ajaran aktif dikelompokkan per siswa → { siswaId, siswaNama,
+  halaqohNama, jumlahUjian, rataNilai (rata semua ujian siswa), detail[]
+  (lengkap dengan breakdown nilai per TP) }, DIURUT rataNilai tertinggi
+  (tie-break nama). Bila menu Ujian nonaktif/tanpa TA → items [].
+- types: HasilUjianItem, HasilUjianData.
+- Komponen baru hasil-ujian-section.tsx:
+  - Tabel ranking: badge peringkat (1 emas, 2 perak, 3 perunggu), nama +
+    halaqoh, jumlah ujian, tanggal ujian terakhir, badge rata-rata berwarna.
+  - Tombol "Sertifikat" HANYA untuk 3 teratas; tombol "Raport" untuk SEMUA.
+  - Sertifikat = HTML A4 landscape bingkai emas (Program Qur'an Mandiri,
+    nama, halaqoh, Peringkat N, rata-rata & jumlah ujian, tahun ajaran,
+    tanggal cetak, ttd musyrif) — escaped HTML.
+  - Raport = HTML A4 portrait (kop, identitas, tabel seluruh ujian: tanggal/
+    jenis/bab/rincian nilai per TP/catatan/rata, rekap jumlah-rata-terbaik,
+    ttd musyrif).
+  - Keduanya dibuka di Dialog pratinjau (iframe srcDoc) dengan tombol Cetak
+    (iframe.contentWindow.print()) — tanpa file server.
+- dashboard.tsx: SectionKey 'hasil-ujian', menu sidebar { Hasil Ujian, icon
+  Award, musyrifOnly } tepat di bawah menu Ujian, filter tampil sama seperti
+  menu Ujian (hanya bila ujianAktif), render section untuk role musyrif.
+
+Insiden sandbox & pemulihan: sandbox didaur ulang di tengah task — .env.local,
+prisma/dev-uji.db, token vercel/github (/tmp) hilang. Dipulihkan dari
+snapshot /tmp/my-project: dev-uji.db (06:16, berisi TA 2026/2027 aktif),
+scripts/ambil-env-publik.sh → env publik supabase dari bundle produksi,
+deploy-vercel.sh → token vercel lama. Prisma client diregenerate untuk sqlite.
+PERHATIAN: token vercel LAMA (deploy-vercel.sh) valid tapi SAML-scope
+diblokir ("No teams available") — deploy produksi Task 53 MENUNGGU TOKEN
+VERCEL BARU dari pengguna (pola sama dengan Task 48). Token github juga
+hilang → push menunggu.
+
+E2E lokal (dev-uji.db): musyrif membuat 2 TP → mencatat 4 ujian (Bagas 95,
+Annisa 81, Embun 72, Lailah 62) → menu "Hasil Ujian" muncul di sidebar →
+urutan tepat 95→81→72→62; badge peringkat 1-4; tombol Sertifikat ×3 (baris
+1-3 saja), Raport ×4; dialog sertifikat berisi nama/Peringkat 1/95/TA/ttd;
+dialog raport berisi rincian per TP (60/64), rekap, portrait.
+Bukti: 53-lokal-hasil-ujian.png, 53-lokal-raport-dialog.png
+
+Stage Summary:
+- Menu "Hasil Ujian" (musyrif) siap di kode: rekap nilai urut tertinggi,
+  sertifikat untuk 3 teratas, raport untuk semua — teruji lokal. DEPLOY
+  PRODUKSI MENUNGGU TOKEN VERCEL BARU (token lama diblokir SAML scope).

@@ -10,6 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  Award,
   CalendarClock,
   Camera,
   ClipboardCheck,
@@ -49,6 +50,7 @@ import KelolaAbsensiSection from '@/components/dashboard/kelola-absensi-section'
 import RekapAbsensiSection from '@/components/dashboard/rekap-absensi-section'
 import UjianSection from '@/components/dashboard/ujian-section'
 import UjianMusyrifSection from '@/components/dashboard/ujian-musyrif-section'
+import HasilUjianSection from '@/components/dashboard/hasil-ujian-section'
 import AbsenAwalDialog from '@/components/dashboard/absen-awal-dialog'
 import PengingatAbsenSiswaDialog, {
   semuaSiswaBelumDiabsen,
@@ -61,6 +63,7 @@ export type SectionKey =
   | 'absensi'
   | 'absensi-siswa'
   | 'ujian'
+  | 'hasil-ujian'
   | 'program'
   | 'musyrif'
   | 'halaqoh'
@@ -93,6 +96,9 @@ const MENU: MenuItem[] = [
   { key: 'input-setoran', label: 'Input Setoran', shortLabel: 'Setoran', icon: PenLine, musyrifOnly: true, primary: true },
   // Menu Ujian musyrif hanya MUNCUL bila admin mengaktifkannya (lihat ujianAktif).
   { key: 'ujian', label: 'Ujian', shortLabel: 'Ujian', icon: FileCheck, musyrifOnly: true },
+  // Hasil Ujian (musyrif): rekap nilai binaan urut tertinggi + cetak sertifikat/raport;
+  // juga hanya muncul bila menu Ujian aktif.
+  { key: 'hasil-ujian', label: 'Hasil Ujian', shortLabel: 'Hasil Ujian', icon: Award, musyrifOnly: true },
   { key: 'program', label: 'Program Kelas', shortLabel: 'Program', icon: FolderOpen, adminOnly: true, primary: true },
   { key: 'musyrif', label: 'Data Musyrif', shortLabel: 'Musyrif', icon: IdCard, adminOnly: true },
   { key: 'halaqoh', label: 'Data Halaqoh', shortLabel: 'Halaqoh', icon: Users, adminOnly: true },
@@ -423,7 +429,9 @@ export default function Dashboard({
   const items = MENU.filter(
     (m) =>
       (!m.adminOnly || user.role === 'admin') &&
-      (!m.musyrifOnly || (user.role === 'musyrif' && (m.key !== 'ujian' || ujianAktif)))
+      (!m.musyrifOnly ||
+        (user.role === 'musyrif' &&
+          (!['ujian', 'hasil-ujian'].includes(m.key) || ujianAktif)))
   )
 
   const handleSelect = (key: SectionKey) => {
@@ -519,6 +527,7 @@ export default function Dashboard({
           )}
           {section === 'ujian' &&
             (user.role === 'admin' ? <UjianSection /> : <UjianMusyrifSection />)}
+          {section === 'hasil-ujian' && user.role === 'musyrif' && <HasilUjianSection />}
           {section === 'pengaturan' && <SettingsSection user={user} />}
         </div>
       </main>
