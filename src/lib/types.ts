@@ -319,3 +319,58 @@ export interface AbsensiSiswaHarianRow {
 export interface AbsensiSiswaHarianData {
   items: AbsensiSiswaHarianRow[]
 }
+
+/** Satu record ujian hafalan siswa yang dicatat musyrif. */
+export interface UjianItem {
+  id: string
+  musyrifId: string
+  musyrifNama: string
+  siswaId: string
+  siswaNama: string
+  halaqohNama: string | null
+  /** Tanggal ujian "YYYY-MM-DD" zona WIB. */
+  tanggal: string
+  jenis: string
+  bab: string | null
+  /** Nilai ujian 0–100. */
+  nilai: number
+  catatan: string | null
+}
+
+/** Baris rekapan ujian per musyrif untuk admin (GET /api/ujian/admin). */
+export interface UjianRekapMusyrif {
+  musyrifId: string
+  musyrifNama: string
+  /** Jumlah ujian dalam rentang filter. */
+  total: number
+  /** Jumlah siswa berbeda yang pernah diujikan. */
+  siswaDiujikan: number
+  /** Rata-rata nilai, dibulatkan 1 desimal; null bila belum ada ujian. */
+  rataNilai: number | null
+  /** Tanggal ujian terakhir "YYYY-MM-DD" (null bila belum ada). */
+  terakhir: string | null
+}
+
+/** Roster siswa halaqoh binaan untuk form input ujian musyrif. */
+export interface UjianSiswaOpsi {
+  id: string
+  nama: string
+  kelas: string
+  halaqohNama: string
+}
+
+/** Respons GET /api/ujian/musyrif. */
+export interface UjianMusyrifData {
+  aktif: boolean
+  items: UjianItem[]
+  /** Roster siswa halaqoh binaan (untuk form input). */
+  siswa: UjianSiswaOpsi[]
+}
+
+/** Respons GET /api/ujian/admin. */
+export interface UjianAdminData {
+  aktif: boolean
+  rekap: UjianRekapMusyrif[]
+  /** Detail ujian satu musyrif (hanya saat query musyrifId diberikan). */
+  detail: UjianItem[] | null
+}

@@ -32,6 +32,7 @@ model Musyrif {
   halaqoh     HalaqohMusyrif[]
   setoran     Setoran[]
   absensi     AbsensiMusyrif[]
+  ujian       Ujian[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 }
@@ -83,8 +84,36 @@ model Siswa {
   fotoUrl   String?
   setoran   Setoran[]
   absensi   AbsensiSiswa[]
+  ujian     Ujian[]
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
+}
+
+/**
+ * Hasil ujian hafalan siswa yang dicatat musyrif (menu Ujian).
+ * Menu ini muncul di dashboard musyrif hanya bila diaktifkan admin
+ * (Setting key 'ujian_musyrif_aktif' = '1').
+ */
+model Ujian {
+  id        String   @id @default(cuid())
+  musyrifId String
+  siswaId   String
+  /** Tanggal ujian "YYYY-MM-DD" zona WIB. */
+  tanggal   String
+  /** Jenis ujian (mis. "Pelajaran", "Mutqin", "Ziyadah") — teks bebas. */
+  jenis     String
+  /** Bab/hafalan yang diujikan (opsional). */
+  bab       String?
+  /** Nilai ujian 0–100. */
+  nilai     Int
+  catatan   String?
+  musyrif   Musyrif @relation(fields: [musyrifId], references: [id], onDelete: Cascade)
+  siswa     Siswa   @relation(fields: [siswaId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([musyrifId, tanggal])
+  @@index([siswaId])
 }
 
 model Setoran {

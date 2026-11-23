@@ -14,6 +14,7 @@ import {
   Camera,
   ClipboardCheck,
   ClipboardList,
+  FileCheck,
   FolderOpen,
   GraduationCap,
   IdCard,
@@ -46,6 +47,8 @@ import HalaqohSection from '@/components/dashboard/halaqoh-section'
 import SiswaSection from '@/components/dashboard/siswa-section'
 import KelolaAbsensiSection from '@/components/dashboard/kelola-absensi-section'
 import RekapAbsensiSection from '@/components/dashboard/rekap-absensi-section'
+import UjianSection from '@/components/dashboard/ujian-section'
+import UjianMusyrifSection from '@/components/dashboard/ujian-musyrif-section'
 import AbsenAwalDialog from '@/components/dashboard/absen-awal-dialog'
 import PengingatAbsenSiswaDialog, {
   semuaSiswaBelumDiabsen,
@@ -57,6 +60,7 @@ export type SectionKey =
   | 'input-setoran'
   | 'absensi'
   | 'absensi-siswa'
+  | 'ujian'
   | 'program'
   | 'musyrif'
   | 'halaqoh'
@@ -87,6 +91,8 @@ const MENU: MenuItem[] = [
   // Absen Siswa tepat di bawah Absen (permintaan: menu absen siswa berada di bawah menu Absen)
   { key: 'absensi-siswa', label: 'Absen Siswa', shortLabel: 'Absen Siswa', icon: ClipboardCheck, musyrifOnly: true },
   { key: 'input-setoran', label: 'Input Setoran', shortLabel: 'Setoran', icon: PenLine, musyrifOnly: true, primary: true },
+  // Menu Ujian musyrif hanya MUNCUL bila admin mengaktifkannya (lihat ujianAktif).
+  { key: 'ujian', label: 'Ujian', shortLabel: 'Ujian', icon: FileCheck, musyrifOnly: true },
   { key: 'program', label: 'Program Kelas', shortLabel: 'Program', icon: FolderOpen, adminOnly: true, primary: true },
   { key: 'musyrif', label: 'Data Musyrif', shortLabel: 'Musyrif', icon: IdCard, adminOnly: true },
   { key: 'halaqoh', label: 'Data Halaqoh', shortLabel: 'Halaqoh', icon: Users, adminOnly: true },
@@ -94,6 +100,8 @@ const MENU: MenuItem[] = [
   { key: 'rekapan', label: 'Rekap Setoran', shortLabel: 'Rekap', icon: ClipboardList, primary: true },
   { key: 'kelola-absensi', label: 'Kelola Absen Musyrif', shortLabel: 'Kelola Absen', icon: UserCheck, adminOnly: true },
   { key: 'rekap-absensi', label: 'Rekap Absen Musyrif', shortLabel: 'Rekap Absen', icon: CalendarClock, adminOnly: true },
+  // Menu Ujian admin: aktivasi menu Ujian musyrif + rekapan ujian per musyrif.
+  { key: 'ujian', label: 'Ujian', shortLabel: 'Ujian', icon: FileCheck, adminOnly: true },
   { key: 'pengaturan', label: 'Pengaturan', shortLabel: 'Pengaturan', icon: Settings },
 ]
 
@@ -110,21 +118,18 @@ function getInitials(name: string): string {
 /** Konten menu sidebar desktop (lg+). */
 function SidebarContent({
   user,
+  items,
   current,
   onSelect,
   onLogout,
 }: {
   user: UserInfo
+  /** Menu hasil filter role (+ aktivasi ujian) dari Dashboard. */
+  items: MenuItem[]
   current: SectionKey
   onSelect: (section: SectionKey) => void
   onLogout: () => void
 }) {
-  /** Musyrif hanya melihat menu non-adminOnly + musyrifOnly; admin lihat non-musyrifOnly. */
-  const items = MENU.filter(
-    (m) =>
-      (!m.adminOnly || user.role === 'admin') &&
-      (!m.musyrifOnly || user.role === 'musyrif')
-  )
   const initials = getInitials(user.name)
 
   return (
@@ -326,6 +331,22 @@ export default function Dashboard({
 }) {
   const [section, setSection] = useState<SectionKey>('ringkasan')
 
+  // Status aktivasi menu Ujian musyrif (Setting 'ujian_musyrif_aktif', diatur
+  // admin di menu Ujian). Musyrif: menu Ujian tampil hanya saat aktif.
+  const [ujianAktif, setUjianAktif] = useState(false)
+  useEffect(() => {
+    if (user.role !== 'musyrif') return
+    let mounted = true
+    api<{ aktif: boolean }>('/api/setting-ujian')
+      .then((d) => {
+        if (mounted) setUjianAktif(Boolean(d.aktif))
+      })
+      .catch(() => {})
+    return () => {
+      mounted = false
+    }
+  }, [user.role])
+
   // Popup "Halaqoh Belum Diabsen" — TERKONTROL: terpicu saat musyrif memilih
   // kartu halaqoh binaan di Ringkasan (bukan otomatis saat dashboard dibuka).
   const [pengingat, setPengingat] = useState<{
@@ -402,7 +423,7 @@ export default function Dashboard({
   const items = MENU.filter(
     (m) =>
       (!m.adminOnly || user.role === 'admin') &&
-      (!m.musyrifOnly || user.role === 'musyrif')
+      (!m.musyrifOnly || (user.role === 'musyrif' && (m.key !== 'ujian' || ujianAktif)))
   )
 
   const handleSelect = (key: SectionKey) => {
@@ -442,7 +463,7 @@ export default function Dashboard({
     <div className="min-h-screen bg-muted/30">
       {/* Sidebar desktop (lg+) */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex print:hidden">
-        <SidebarContent user={user} current={section} onSelect={setSection} onLogout={onLogout} />
+        <SidebarContent user={user} items={items} current={section} onSelect={setSection} onLogout={onLogout} />
       </aside>
 
       {/* Topbar mobile (<lg): brand + tema + keluar (navigasi pindah ke bottom bar) */}
@@ -496,6 +517,8 @@ export default function Dashboard({
           {section === 'rekap-absensi' && (
             <RekapAbsensiSection key={`rekap-absensi-${absensiTick}`} />
           )}
+          {section === 'ujian' &&
+            (user.role === 'admin' ? <UjianSection /> : <UjianMusyrifSection />)}
           {section === 'pengaturan' && <SettingsSection user={user} />}
         </div>
       </main>

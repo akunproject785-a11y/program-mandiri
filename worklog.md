@@ -184,3 +184,57 @@ E2E produksi (deployment program-mandiri-ceqkh2gix):
 Stage Summary:
 - FITUR HAPUS ABSEN MUSYRIF SELESAI DI PRODUKSI: admin bisa menghapus absensi
   apa pun (PENDING/ACC/TOLAK) beserta fotonya sehingga tidak tercatat.
+
+---
+Task ID: 47
+Agent: Z.ai (main)
+Task: "pada dashboard admin, tambahkan Menu Ujian untuk mengaktifkan menu
+Ujian pada dashboard musyrif. fungsinya mengaktifkan dan melihat rekapan
+ujian dari masing-masing musyrif"
+
+Implementasi (fitur baru dari nol — belum ada kode ujian sebelumnya):
+- Prisma: model Ujian (musyrifId, siswaId, tanggal WIB, jenis, bab?, nilai
+  0-100, catatan?) + relasi Musyrif/Siswa; di schema.prisma & schema.sqlite.
+  Setting key 'ujian_musyrif_aktif' ('1' = aktif) di tabel Setting.
+- API baru:
+  - GET/PATCH /api/setting-ujian (GET keduanya role; PATCH admin)
+  - GET/POST /api/ujian/musyrif (daftar + roster siswa halaqoh binaan;
+    input: siswa wajib halaqoh binaan, tanggal valid, jenis wajib, nilai
+    bulat 0-100; POST ditolak 403 bila menu nonaktif)
+  - DELETE /api/ujian/musyrif/:id (milik sendiri)
+  - GET /api/ujian/admin (rekap per musyrif: total, siswa diujikan,
+    rata-rata tertimbang, terakhir; ?dari=&sampai=; ?musyrifId= detail)
+- UI:
+  - ujian-section.tsx (admin): kartu aktivasi Switch + statistik + filter
+    tanggal + tabel rekap per musyrif + dialog detail daftar ujian.
+  - ujian-musyrif-section.tsx (musyrif): form catat ujian + daftar + hapus
+    (ConfirmDialog); tampil pemberitahuan bila dinonaktifkan admin.
+  - dashboard.tsx: SectionKey 'ujian'; dua entri menu (adminOnly & musyrifOnly);
+    musyrifOnly 'ujian' ditampilkan hanya saat ujianAktif (fetch
+    /api/setting-ujian); SidebarContent kini menerima items hasil filter.
+- Migrasi produksi: scripts/migrasi-ujian.mjs (CREATE TABLE Ujian + index +
+  Setting awal '0', idempotent, via DIRECT_URL) — SIAP tapi BELUM dijalankan
+  karena token Vercel kedua sudah tidak berlaku (lihat di bawah).
+
+E2E lokal (sqlite mirror + seed + profil Admin lokal; build hijau):
+- Admin: menu Ujian ada; default Nonaktif; toggle ON → Setting true + toast;
+  setelah amanda input, rekap tampil (total 1, rata 85) + dialog detail isi
+  lengkap; toggle OFF → Setting false.
+- Amanda: sebelum aktivasi menu tak ada; setelah aktivasi menu Ujian muncul;
+  input ujian (Alfandy Habil Israfil — Mutqin — 85 + catatan) tersimpan;
+  saat nonaktif: menu hilang DAN POST ditolak 403.
+- Bukti: download/tampilan-website/47-admin-ujian-menu.png,
+  47-musyrif-ujian-tercatat.png, 47-admin-rekap-ujian.png,
+  47-admin-detail-ujian.png
+
+Kendala deploy:
+- Token Vercel kedua (vcp_8EICmB…) yang pagi ini masih bisa deploy kini
+  DITOLAK untuk scope team akunproject785-9259 ("Not authorized… use a token
+  with access to this scope"; /v2/teams kosong). Ditulis ulang .vercel + env
+  publik via ambil-env-publik.sh; .env.local lokal diarahkan ke sqlite untuk
+  E2E. Migrasi produksi & deploy menunggu token Vercel BARU.
+
+Stage Summary:
+- FITUR UJIAN SELESAI DAN TERUJI LOKAL PENUH; tinggal migrasi SQL produksi
+  (bun scripts/migrasi-ujian.mjs) + vercel deploy --prod begitu token baru
+  diterima.
