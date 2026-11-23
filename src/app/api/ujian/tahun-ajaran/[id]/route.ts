@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAdmin } from '@/lib/auth'
+import { KEY_UJIAN_AKTIF } from '../../../_lib/ujian'
 
 /**
  * PATCH /api/ujian/tahun-ajaran/[id] — admin MENGAKTIFKAN tahun ajaran pilihan
@@ -32,9 +33,11 @@ export async function PATCH(_request: Request, { params }: { params: Promise<{ i
 }
 
 /**
- * DELETE /api/ujian/tahun-ajaran/[id] — hapus tahun ajaran.
- * Proteksi: tidak boleh menghapus tahun ajaran yang sedang aktif, dan tidak
- * boleh menghapus yang sudah dipakai data ujian/TP (tetap sebagai arsip).
+ * DELETE /api/ujian/tahun-ajaran/[id] — hapus tahun ajaran BESERTA seluruh
+ * data ujian & TP miliknya (database ujian untuk tahun ajaran itu ikut kosong).
+ * Bila yang dihapus TA aktif: TA lain (terlama) otomatis diaktifkan sebagai
+ * pengganti; bila itu satu-satunya, menu Ujian musyrif otomatis dinonaktifkan
+ * agar musyrif tidak memakai sistem tanpa tahun ajaran.
  */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -46,27 +49,34 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     if (!target) {
       return NextResponse.json({ error: 'Tahun ajaran tidak ditemukan' }, { status: 404 })
     }
-    if (target.aktif) {
-      return NextResponse.json(
-        { error: 'Tidak bisa menghapus tahun ajaran yang sedang aktif — aktifkan tahun ajaran lain dulu' },
-        { status: 400 }
-      )
-    }
+
     const [jumlahUjian, jumlahTp] = await Promise.all([
       db.ujian.count({ where: { tahunAjaran: target.label } }),
       db.tpUjian.count({ where: { tahunAjaran: target.label } }),
     ])
-    if (jumlahUjian > 0 || jumlahTp > 0) {
-      return NextResponse.json(
-        {
-          error: `Tahun ajaran "${target.label}" sudah dipakai ${jumlahUjian} ujian dan ${jumlahTp} TP — tidak dapat dihapus`,
-        },
-        { status: 400 }
-      )
+
+    await db.$transaction([
+      db.ujian.deleteMany({ where: { tahunAjaran: target.label } }),
+      db.tpUjian.deleteMany({ where: { tahunAjaran: target.label } }),
+      db.tahunAjaran.delete({ where: { id } }),
+    ])
+
+    // TA yang dihapus adalah yang aktif → jaga keadaan yang konsisten setelahnya.
+    if (target.aktif) {
+      const pengganti = await db.tahunAjaran.findFirst({ orderBy: { createdAt: 'asc' } })
+      if (pengganti) {
+        await db.tahunAjaran.update({ where: { id: pengganti.id }, data: { aktif: true } })
+      } else {
+        // Satu-satunya TA → tidak ada data ujian yang dipakai; matikan menu musyrif.
+        await db.setting.upsert({
+          where: { key: KEY_UJIAN_AKTIF },
+          create: { key: KEY_UJIAN_AKTIF, value: '0' },
+          update: { value: '0' },
+        })
+      }
     }
 
-    await db.tahunAjaran.delete({ where: { id } })
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, terhapus: { ujian: jumlahUjian, tp: jumlahTp } })
   } catch (e) {
     console.error('[ujian/tahun-ajaran DELETE]', e)
     return NextResponse.json({ error: 'Terjadi kesalahan server' }, { status: 500 })

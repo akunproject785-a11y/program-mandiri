@@ -488,3 +488,52 @@ Stage Summary:
   satu (baru ATAU lalu — bolak-balik bisa), melihat jumlah data per TA, dan
   menghapus TA yang belum dipakai. Produksi: TA aktif "2026/2027", data era
   pra-TA tetap arsip.
+
+---
+Task ID: 52
+Agent: Z.ai (main)
+Task: "tambahkan opsi hapus tahun ajaran untuk menghapus tahun ajaran
+2027/2028 — ketika dihapus otomatis database ujian juga kosong"
+
+Implementasi (hapus TA = CASCADE data ujian/TP miliknya):
+- DELETE /api/ujian/tahun-ajaran/[id]: tidak lagi menolak TA berisi data.
+  Transaction menghapus Ujian + TpUjian dengan tahunAjaran = label TA, lalu
+  TA-nya; respons { ok, terhapus: { ujian, tp } } untuk toast admin.
+- Hapus TA AKTIF kini diizinkan dengan penanganan otomatis:
+  - bila ada TA lain → TA terlama otomatis diaktifkan sebagai pengganti;
+  - bila satu-satunya → menu Ujian musyrif otomatis dinonaktifkan (Setting
+    ujian_musyrif_aktif = '0') agar musyrif tidak memakai sistem tanpa TA.
+- UI admin: tombol hapus tampil untuk SEMUA TA (termasuk aktif); ConfirmDialog
+  menjelaskan konsekuensi (jumlah ujian & TP yang ikut terhapus / "belum
+  dipakai data"); toast sukses menyebut jumlah data yang dikosongkan; daftar &
+  rekap dimuat ulang (muat()) karena TA aktif bisa berpindah otomatis.
+
+E2E lokal (dengan data): admin tambah+aktifkan 2027/2028 → musyrif membuat
+2 TP → mencatat 1 ujian (Alfandy, Tartil Juz 30, rata 90) → admin hapus TA
+2027/2028 (AKTIF): dialog "1 ujian dan 2 TP", setelah hapus TA hilang,
+2026/2027 otomatis aktif kembali, DB: ujian27=0 tp27=0 (tadinya 1/2), arsip
+2026/2027 utuh (1 ujian). Kasus hapus TA SATU-SATUNYA: TahunAjaran kosong +
+toggle otomatis Nonaktif.
+Bukti: 52-lokal-gate.png, 52-lokal-ta-kosong.png
+
+E2E produksi (deploy p3t8sdfb1): kondisi awal — pengguna nyata telah
+menghapus TA 2026/2027 lewat UI sehingga 2027/2028 adalah TA aktif tunggal
+(0 ujian • 0 TP). Admin menghapus 2027/2028 lewat UI sesuai permintaan:
+dialog konfirm → hilang → "Belum ada tahun ajaran" + toggle otomatis
+Nonaktif. DB final: TahunAjaran 0 baris, Ujian/TP tahunAjaran='2027/2028'
+= 0/0, Setting ujian_musyrif_aktif='0'. Musyrif (amanda): menu Ujian
+tersembunyi — konsisten dengan tidak adanya TA aktif.
+Bukti: 52-prod-ta-hapus.png
+
+Catatan operasional:
+- Produksi KINI TANPA tahun ajaran & menu Ujian nonaktif (sesuai permintaan
+  menghapus 2027/2028). Langkah admin berikutnya: menu Ujian → tambah tahun
+  ajaran (mis. 2026/2027 atau lainnya) → aktifkan → toggle "Aktifkan Menu
+  Ujian" kembali ON. Data ujian era pra-TA (arsip, tahunAjaran kosong) tidak
+  tersentuh oleh cascade.
+
+Stage Summary:
+- HAPUS TAHUN AJARAN = BERSIH DATA: menghapus TA mengosongkan database
+  ujian/TP milik TA itu secara otomatis; TA aktif boleh dihapus dengan
+  pengalihan otomatis (TA lain aktif, atau menu Ujian dimatikan bila
+  satu-satunya). Produksi: TA 2027/2028 telah dihapus.

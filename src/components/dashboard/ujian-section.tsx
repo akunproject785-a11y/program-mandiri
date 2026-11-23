@@ -169,9 +169,16 @@ export default function UjianSection() {
     const target = hapusTa
     setHapusTa(null)
     try {
-      await api(`/api/ujian/tahun-ajaran/${target.id}`, { method: 'DELETE' })
+      const res = await api<{ ok: boolean; terhapus: { ujian: number; tp: number } }>(
+        `/api/ujian/tahun-ajaran/${target.id}`,
+        { method: 'DELETE' }
+      )
       setDaftarTa((prev) => prev.filter((x) => x.id !== target.id))
-      toast.success(`Tahun ajaran ${target.label} dihapus`)
+      toast.success(`Tahun ajaran ${target.label} dihapus`, {
+        description: `${res.terhapus.ujian} ujian dan ${res.terhapus.tp} TP milik tahun ajaran ini ikut terhapus — database ujian tahun ajaran tersebut kini kosong.`,
+      })
+      // TA aktif bisa berpindah otomatis (atau menu dimatikan) → muat ulang semuanya.
+      muat()
     } catch (err) {
       toast.error((err as Error).message)
     }
@@ -293,17 +300,15 @@ export default function UjianSection() {
                           Aktifkan
                         </Button>
                       ) : null}
-                      {!t.aktif ? (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-destructive hover:text-destructive"
-                          onClick={() => setHapusTa(t)}
-                          aria-label={`Hapus tahun ajaran ${t.label}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      ) : null}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        onClick={() => setHapusTa(t)}
+                        aria-label={`Hapus tahun ajaran ${t.label}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </span>
                   </li>
                 ))}
@@ -343,8 +348,8 @@ export default function UjianSection() {
         title={`Hapus tahun ajaran ${hapusTa?.label ?? ''}?`}
         description={
           hapusTa && (hapusTa.jumlahUjian > 0 || hapusTa.jumlahTp > 0)
-            ? `Tahun ajaran ini sudah dipakai ${hapusTa.jumlahUjian} ujian dan ${hapusTa.jumlahTp} TP sehingga tidak dapat dihapus.`
-            : 'Tahun ajaran yang belum dipakai data akan dihapus permanen.'
+            ? `Seluruh data milik tahun ajaran ini ikut terhapus permanen: ${hapusTa.jumlahUjian} ujian dan ${hapusTa.jumlahTp} TP di database ujian akan dikosongkan.`
+            : 'Tahun ajaran ini belum dipakai data — dihapus permanen tanpa menghapus data ujian lain.'
         }
         confirmText="Hapus"
         onConfirm={konfirmHapusTa}
