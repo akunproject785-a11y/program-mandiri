@@ -238,3 +238,43 @@ Stage Summary:
 - FITUR UJIAN SELESAI DAN TERUJI LOKAL PENUH; tinggal migrasi SQL produksi
   (bun scripts/migrasi-ujian.mjs) + vercel deploy --prod begitu token baru
   diterima.
+
+---
+Task ID: 48
+Agent: Z.ai (main)
+Task: deploy produksi dengan token Vercel BARU (lanjutan Task 47) + E2E produksi
+
+Eksekusi:
+- Token ketiga valid untuk scope team (API /v9/projects 200); .vercel link
+  dibuat ulang; .env.local produksi di-pull (DATABASE_URL/DIRECT_URL ada).
+- Migrasi produksi JALAN: scripts/migrasi-ujian.mjs → tabel "Ujian" + index +
+  Setting 'ujian_musyrif_aktif' awal '0' (idempotent).
+- vercel deploy --prod sukses (deployment program-mandiri-nnpghalqy-…);
+  endpoint baru /api/setting-ujian, /api/ujian/admin, /api/ujian/musyrif
+  balik 401 (bukan 404) → build baru tayang di program-mandiri.vercel.app.
+
+E2E produksi (browser, akun admin & amanda):
+- Admin: menu Ujian tampil; section aktivasi + rekap render; toggle ON →
+  DB '1' (dicek langsung via SQL: cek-setting-ujian-prod.mjs) + switch 'Aktif'.
+- Amanda: menu Ujian MUNCUL setelah aktivasi (menu dinamis bekerja di prod);
+  input ujian (Alfandy Habil Israfil — "Uji Produksi" — 85) tersimpan.
+- Admin: statistik 1/1/85; baris rekap Amanda; Detail dialog berisi record.
+- Cleanup: record uji dihapus amanda via UI (uji DELETE /api/ujian/musyrif/:id)
+  → daftar "Belum ada ujian", DB 0 baris. Status akhir: menu Ujian AKTIF di
+  produksi (admin bisa menonaktifkan kapan pun dari menu Ujian).
+- Bukti: download/tampilan-website/47-prod-admin-ujian.png,
+  47-prod-musyrif-ujian.png, 47-prod-admin-rekap.png,
+  47-prod-admin-rekap-tabel.png, 47-prod-admin-detail.png
+
+Catatan verifikasi todo lain (batch permintaan):
+- Perbaikan selfie Samsung (preview/upload HEIC) — sudah di Task 45
+  (compressImageFile HEIC→JPEG + previewUrl + E2E produksi); tidak ada kode
+  baru yang diperlukan.
+- Input Setoran gating & pengingat halaqoh (Task 38 refinement) — sudah ada
+  di kode (input-setoran-section.tsx pakai onBukaAbsenSiswa + popup).
+- Logo/favicon — favicon.ico + icon.png + logo.png sudah ada; tidak ada
+  lampiran logo baru di upload/.
+
+Stage Summary:
+- DEPLOY PRODUKSI SUKSES DENGAN FITUR UJIAN AKTIF; E2E produksi lengkap
+  (aktifkan → muncul → input → rekap+detail → hapus) dan data uji bersih.
