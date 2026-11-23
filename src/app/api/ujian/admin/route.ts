@@ -5,10 +5,11 @@ import { bacaUjianAktif } from '../../_lib/ujian'
 import { isTanggalValid } from '../../absensi/_lib'
 import type { Prisma } from '@prisma/client'
 
-/** Include data relasi untuk pemetaan UjianItem. */
+/** Include data relasi untuk pemetaan UjianItem (dengan breakdown nilai per TP). */
 const ujianInclude = {
   siswa: { select: { nama: true, halaqoh: { select: { nama: true } } } },
   musyrif: { select: { namaLengkap: true } },
+  nilaiTp: { orderBy: { tp: { urutan: 'asc' } }, select: { tpId: true, nilai: true, tp: { select: { teks: true } } } },
 } satisfies Prisma.UjianInclude
 
 type UjianWithRelasi = Prisma.UjianGetPayload<{ include: typeof ujianInclude }>
@@ -26,6 +27,7 @@ function mapUjian(u: UjianWithRelasi) {
     bab: u.bab,
     nilai: u.nilai,
     catatan: u.catatan,
+    nilaiTp: u.nilaiTp.map((n) => ({ tpId: n.tpId, teks: n.tp.teks, nilai: n.nilai })),
   }
 }
 

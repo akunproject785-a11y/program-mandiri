@@ -32,6 +32,7 @@ model Musyrif {
   setoran     Setoran[]
   absensi     AbsensiMusyrif[]
   ujian       Ujian[]
+  tpUjian     TpUjian[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 }
@@ -108,11 +109,45 @@ model Ujian {
   catatan   String?
   musyrif   Musyrif @relation(fields: [musyrifId], references: [id], onDelete: Cascade)
   siswa     Siswa   @relation(fields: [siswaId], references: [id], onDelete: Cascade)
+  nilaiTp   NilaiTp[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([musyrifId, tanggal])
   @@index([siswaId])
+}
+
+/**
+ * Tujuan Pembelajaran (TP) yang diinput musyrif untuk ujian hafalan.
+ * Musyrif wajib menyimpan minimal 2 TP sebelum dapat mencatat ujian siswa;
+ * nilai ujian per siswa dihitung berdasarkan TP-TP ini.
+ */
+model TpUjian {
+  id        String    @id @default(cuid())
+  musyrifId String
+  /** Deskripsi TP (mis. "Siswa lancar membaca juz 30"). */
+  teks      String
+  /** Urutan tampil TP (per musyrif) — penomoran TP1, TP2, … deterministik. */
+  urutan    Int       @default(0)
+  musyrif   Musyrif   @relation(fields: [musyrifId], references: [id], onDelete: Cascade)
+  nilaiTp   NilaiTp[]
+  createdAt DateTime  @default(now())
+
+  @@index([musyrifId])
+}
+
+/** Nilai per TP untuk satu ujian siswa — breakdown nilai ujian per Tujuan Pembelajaran. */
+model NilaiTp {
+  id      String  @id @default(cuid())
+  ujianId String
+  tpId    String
+  /** Nilai 0–100 untuk TP ini. */
+  nilai   Int
+  ujian   Ujian   @relation(fields: [ujianId], references: [id], onDelete: Cascade)
+  tp      TpUjian @relation(fields: [tpId], references: [id], onDelete: Cascade)
+
+  @@unique([ujianId, tpId])
+  @@index([tpId])
 }
 
 model Setoran {

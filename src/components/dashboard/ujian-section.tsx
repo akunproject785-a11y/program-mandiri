@@ -360,6 +360,14 @@ export default function UjianSection() {
                         {u.halaqohNama ? ` • ${u.halaqohNama}` : ''}
                       </p>
                       {u.bab ? <p className="mt-0.5 text-xs">Bab: {u.bab}</p> : null}
+                      <div className="mt-1.5 space-y-0.5">
+                        {(u.nilaiTp ?? []).map((n, idx) => (
+                          <p key={n.tpId} className="truncate text-xs text-muted-foreground" title={n.teks}>
+                            <span className="font-semibold text-foreground">TP{idx + 1}</span> {n.teks} —{' '}
+                            <span className="font-semibold tabular-nums text-foreground">{n.nilai}</span>
+                          </p>
+                        ))}
+                      </div>
                       {u.catatan ? (
                         <p className="mt-1 rounded bg-muted px-1.5 py-0.5 text-xs">{u.catatan}</p>
                       ) : null}

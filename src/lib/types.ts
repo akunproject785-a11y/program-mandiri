@@ -320,6 +320,15 @@ export interface AbsensiSiswaHarianData {
   items: AbsensiSiswaHarianRow[]
 }
 
+/** Nilai satu TP dalam sebuah ujian siswa (breakdown per Tujuan Pembelajaran). */
+export interface UjianNilaiTpItem {
+  tpId: string
+  /** Teks/deskripsi TP. */
+  teks: string
+  /** Nilai 0–100 untuk TP ini. */
+  nilai: number
+}
+
 /** Satu record ujian hafalan siswa yang dicatat musyrif. */
 export interface UjianItem {
   id: string
@@ -332,9 +341,20 @@ export interface UjianItem {
   tanggal: string
   jenis: string
   bab: string | null
-  /** Nilai ujian 0–100. */
+  /** Nilai ujian 0–100 (rata-rata nilai per TP). */
   nilai: number
   catatan: string | null
+  /** Breakdown nilai per TP (isi saat detail/daftar dimuat). */
+  nilaiTp?: UjianNilaiTpItem[]
+}
+
+/** Satu Tujuan Pembelajaran (TP) milik musyrif untuk ujian. */
+export interface UjianTpItem {
+  id: string
+  /** Deskripsi TP. */
+  teks: string
+  /** true bila TP sudah dipakai pada nilai ujian (tidak bisa dihapus). */
+  dipakai: boolean
 }
 
 /** Baris rekapan ujian per musyrif untuk admin (GET /api/ujian/admin). */
@@ -365,6 +385,8 @@ export interface UjianMusyrifData {
   items: UjianItem[]
   /** Roster siswa halaqoh binaan (untuk form input). */
   siswa: UjianSiswaOpsi[]
+  /** Daftar TP milik musyrif (urut dibuat) — minimal 2 sebelum bisa input ujian siswa. */
+  tp: UjianTpItem[]
 }
 
 /** Respons GET /api/ujian/admin. */

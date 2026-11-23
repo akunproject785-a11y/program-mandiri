@@ -278,3 +278,81 @@ Catatan verifikasi todo lain (batch permintaan):
 Stage Summary:
 - DEPLOY PRODUKSI SUKSES DENGAN FITUR UJIAN AKTIF; E2E produksi lengkap
   (aktifkan → muncul → input → rekap+detail → hapus) dan data uji bersih.
+
+---
+Task ID: 49
+Agent: Z.ai (main)
+Task: "pada dashboard musyrif sebelum bisa menginput ujian persiswa, musyrif
+wajib menginput minimal 2 deskripsi Tujuan Pembelajaran (TP). jika sudah
+disimpan baru muncul nama siswa dan input nilai berdasarkan TP yang diinput
+musyrif"
+
+Implementasi (wizard 2 tahap pada menu Ujian musyrif):
+- Prisma (schema.prisma + schema.sqlite.prisma): model TpUjian (musyrifId,
+  teks, urutan Int default 0) + NilaiTp (ujianId, tpId, nilai 0-100,
+  @@unique([ujianId, tpId]), cascade delete); relasi Musyrif.tpUjian dan
+  Ujian.nilaiTp. Kolom 'urutan' DITAMBAHKAN SETELAH BUG TERLIHAT DI PRODUKSI:
+  bulk createMany menghasilkan createdAt identik → orderBy createdAt ambigu →
+  penomoran TP1/TP2 bisa tertukar antara form musyrif dan dialog admin
+  (terekam di screenshot 49-prod-admin-detail.png versi awal). Solusi:
+  urutan eksplisit per musyrif (backfill ROW_NUMBER by createdAt,id).
+- API baru: POST /api/ujian/tp (bulk simpan TP, urutan = max+1 berurutan),
+  DELETE /api/ujian/tp/:id (409 bila TP sudah dipakai nilai ujian).
+- GET /api/ujian/musyrif kini mengembalikan 'tp' (dengan flag dipakai) dan
+  items berisi nilaiTp[] (teks+nilai per TP, urut urutan).
+- POST /api/ujian/musyrif kini: body nilaiTp[] wajib MENCAKUP SEMUA TP milik
+  musyrif (set equality, tiap nilai 0-100); minimal 2 TP tersimpan (400 bila
+  kurang); Ujian.nilai = rata-rata dibulatkan dari nilai per TP; transaksi
+  create ujian + createMany nilaiTp.
+- GET /api/ujian/admin?musyrifId= detail kini membawa nilaiTp[] breakdown.
+- UI ujian-musyrif-section.tsx: kartu TP (daftar tersimpan bernomor + hapus
+  TP yang belum dipakai + baris input dinamis + Simpan TP + badge "x/2 TP
+  tersimpan"); form "Catat Ujian Siswa" HANYA MUNCUL bila >= 2 TP (kartu
+  terkunci + penjelasan bila belum); input nilai per TP (TP1..TPn 0-100);
+  daftar ujian desktop: klik baris → sub-baris breakdown per TP; mobile:
+  breakdown selalu tampil. Fix UX: dialog konfirmasi hapus kini tertutup
+  juga saat gagal (sebelumnya tertinggal terbuka pada error 409).
+- UI ujian-section.tsx (admin): dialog detail menampilkan breakdown
+  "TPn <teks> — <nilai>" per ujian.
+- Migrasi produksi: scripts/migrasi-tp-ujian.mjs (CREATE TABLE TpUjian/
+  NilaiTp + ALTER ADD COLUMN urutan + backfill + index, idempotent).
+- Perbaikan bug urutan dikerjakan di tengah E2E produksi dan redeploy
+  (deployment 8t3w0sxjt), verifikasi ulang breakdown urut benar.
+
+E2E lokal (sqlite, build hijau):
+- Gate: 0 TP → "0/2 TP tersimpan" + kartu terkunci + form siswa tidak ada;
+  1 TP → masih terkunci (toast "Tambah minimal 2 TP…"); 2 TP → form terbuka
+  dengan 2 input nilai per TP.
+- Validasi: simpan tanpa siswa ditolak; nilai per TP wajib diisi.
+- Simpan ujian Alfandy (TP1 85, TP2 90) → rata-rata 88 tersimpan + breakdown
+  baris (klik baris) "TP1 …: 85 / TP2 …: 90".
+- Admin: detail dialog TP1—85, TP2—90; rekap rata-rata 86.5 (2 ujian).
+- Hapus TP terpakai → 409 dengan pesan jelas; hapus ujian → cascade NilaiTp;
+  TP yang telah lepas dipakai kini bisa dihapus → gate kembali terkunci 0/2.
+- Bukti: download/tampilan-website/49-gate-terkunci.png, 49-gate-terbuka.png,
+  49-daftar-breakdown.png, 49-admin-detail-tp.png
+
+E2E produksi (program-mandiri.vercel.app, browser):
+- Migrasi jalan (tabel + kolom urutan siap); deploy sukses; /api/ujian/tp 405
+  (ada) → build baru tayang.
+- Amanda: gate "0/2 TP tersimpan" + terkunci; tambah 2 TP → form terbuka;
+  simpan ujian (Alfandy, 85/90) → "Uji TP Produksi — nilai rata-rata 88".
+- Admin: dialog detail breakdown per TP (setelah fix urutan: TP1 lancar—90,
+  TP2 harakat—85, sesuai pasangan data tersimpan — penomoran stabil).
+- Cleanup data uji: hapus ujian + 2 TP → DB produksi akhir ujian 0, nilaiTp 0,
+  tp 0; Setting ujian_musyrif_aktif tetap '1' (menu aktif).
+- Bukti: download/tampilan-website/49-prod-gate.png, 49-prod-tercatat.png,
+  49-prod-admin-detail.png
+
+Catatan:
+- Data ujian LAMA yang dibuat sebelum fitur TP (pre-Task 49) tidak memiliki
+  breakdown nilaiTp — tampil tanpa baris TP di detail (wajar).
+- Port 3000 bentrok saat awal E2E lokal (server lama Task 48 masih hidup)
+  — dikill lalu restart fresh; sesi browser lama bisa membuat eval login
+  gagal → skrip login kini idempotent (skip bila sudah masuk).
+
+Stage Summary:
+- WIZARD UJIAN MUSYRIF LIVE DI PRODUKSI: wajib >= 2 TP sebelum form siswa
+  muncul, nilai per TP wajib lengkap, rata-rata tersimpan di Ujian.nilai,
+  breakdown TP tampil untuk musyrif (klik baris) dan admin (dialog detail);
+  data uji produksi dibersihkan; fitur tetap dalam status AKTIF.

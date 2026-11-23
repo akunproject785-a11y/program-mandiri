@@ -6,10 +6,11 @@ import { bacaUjianAktif } from '../../_lib/ujian'
 import { isTanggalValid } from '../../absensi/_lib'
 import type { Prisma } from '@prisma/client'
 
-/** Include data relasi untuk pemetaan UjianItem. */
+/** Include data relasi untuk pemetaan UjianItem (dengan breakdown nilai per TP). */
 const ujianInclude = {
   siswa: { select: { nama: true, halaqoh: { select: { nama: true } } } },
   musyrif: { select: { namaLengkap: true } },
+  nilaiTp: { orderBy: { tp: { urutan: 'asc' } }, select: { tpId: true, nilai: true, tp: { select: { teks: true } } } },
 } satisfies Prisma.UjianInclude
 
 type UjianWithRelasi = Prisma.UjianGetPayload<{ include: typeof ujianInclude }>
@@ -27,10 +28,17 @@ function mapUjian(u: UjianWithRelasi) {
     bab: u.bab,
     nilai: u.nilai,
     catatan: u.catatan,
+    nilaiTp: u.nilaiTp.map((n) => ({ tpId: n.tpId, teks: n.tp.teks, nilai: n.nilai })),
   }
 }
 
-/** GET /api/ujian/musyrif — daftar ujian milik musyrif + roster siswa halaqoh binaan. */
+/** Minimal TP tersimpan sebelum musyrif boleh mencatat ujian siswa. */
+export const MIN_TP_UJIAN = 2
+
+/**
+ * GET /api/ujian/musyrif — daftar ujian milik musyrif (dengan breakdown per TP)
+ * + daftar TP miliknya + roster siswa halaqoh binaan.
+ */
 export async function GET() {
   try {
     const auth = await requireAuth()
@@ -41,7 +49,7 @@ export async function GET() {
     const musyrifId = auth.user.musyrifId
     const scopeIds = await getHalaqohIdsForMusyrif(musyrifId)
 
-    const [aktif, items, siswaRows] = await Promise.all([
+    const [aktif, items, siswaRows, tpRows] = await Promise.all([
       bacaUjianAktif(),
       db.ujian.findMany({
         where: { musyrifId },
@@ -54,6 +62,11 @@ export async function GET() {
         orderBy: { nama: 'asc' },
         select: { id: true, nama: true, kelas: true, halaqoh: { select: { nama: true } } },
       }),
+      db.tpUjian.findMany({
+        where: { musyrifId },
+        orderBy: [{ urutan: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, teks: true, _count: { select: { nilaiTp: true } } },
+      }),
     ])
 
     return NextResponse.json({
@@ -65,6 +78,7 @@ export async function GET() {
         kelas: s.kelas,
         halaqohNama: s.halaqoh?.nama ?? '',
       })),
+      tp: tpRows.map((t) => ({ id: t.id, teks: t.teks, dipakai: t._count.nilaiTp > 0 })),
     })
   } catch (e) {
     console.error('[ujian/musyrif GET]', e)
@@ -73,9 +87,11 @@ export async function GET() {
 }
 
 /**
- * POST /api/ujian/musyrif — catat hasil ujian siswa.
- * Body: { siswaId, tanggal, jenis, bab?, nilai, catatan? }
- * Menu Ujian harus sedang diaktifkan admin; siswa harus halaqoh binaan.
+ * POST /api/ujian/musyrif — catat hasil ujian siswa berdasarkan TP milik musyrif.
+ * Body: { siswaId, tanggal, jenis, bab?, catatan?, nilaiTp: { tpId, nilai }[] }
+ * Syarat: menu Ujian aktif, siswa halaqoh binaan, minimal 2 TP tersimpan, dan
+ * SEMUA TP milik musyrif wajib punya nilai 0–100 (set tpId === set TP musyrif).
+ * Ujian.nilai disimpan sebagai rata-rata (dibulatkan) dari nilai per TP.
  */
 export async function POST(request: Request) {
   try {
@@ -98,8 +114,8 @@ export async function POST(request: Request) {
       tanggal?: string
       jenis?: string
       bab?: string
-      nilai?: number | string
       catatan?: string
+      nilaiTp?: { tpId?: string; nilai?: number | string }[]
     } | null
 
     if (!body || !body.siswaId || !isTanggalValid(body.tanggal) || !body.jenis?.trim()) {
@@ -109,10 +125,39 @@ export async function POST(request: Request) {
       )
     }
 
-    const nilai = Number(body.nilai)
-    if (!Number.isInteger(nilai) || nilai < 0 || nilai > 100) {
-      return NextResponse.json({ error: 'Nilai harus angka bulat 0–100' }, { status: 400 })
+    // TP milik musyrif — minimal 2 dan semua wajib dinilai.
+    const tpRows = await db.tpUjian.findMany({
+      where: { musyrifId },
+      orderBy: [{ urutan: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true },
+    })
+    if (tpRows.length < MIN_TP_UJIAN) {
+      return NextResponse.json(
+        { error: `Input minimal ${MIN_TP_UJIAN} Tujuan Pembelajaran (TP) sebelum mencatat ujian` },
+        { status: 400 }
+      )
     }
+
+    const tpIds = new Set(tpRows.map((t) => t.id))
+    const nilaiMasuk = Array.isArray(body.nilaiTp) ? body.nilaiTp : []
+    if (nilaiMasuk.length !== tpRows.length) {
+      return NextResponse.json(
+        { error: 'Semua TP wajib memiliki nilai sebelum ujian disimpan' },
+        { status: 400 }
+      )
+    }
+    const nilaiPerTp = new Map<string, number>()
+    for (const n of nilaiMasuk) {
+      const nilai = Number(n?.nilai)
+      if (!n?.tpId || !tpIds.has(n.tpId) || nilaiPerTp.has(n.tpId)) {
+        return NextResponse.json({ error: 'Daftar nilai TP tidak valid' }, { status: 400 })
+      }
+      if (!Number.isInteger(nilai) || nilai < 0 || nilai > 100) {
+        return NextResponse.json({ error: 'Nilai TP harus angka bulat 0–100' }, { status: 400 })
+      }
+      nilaiPerTp.set(n.tpId, nilai)
+    }
+    const rata = Math.round([...nilaiPerTp.values()].reduce((a, b) => a + b, 0) / nilaiPerTp.size)
 
     // Siswa harus berada di salah satu halaqoh binaan musyrif.
     const scopeIds = await getHalaqohIdsForMusyrif(musyrifId)
@@ -127,17 +172,23 @@ export async function POST(request: Request) {
       )
     }
 
-    const created = await db.ujian.create({
-      data: {
-        musyrifId,
-        siswaId: siswa.id,
-        tanggal: body.tanggal,
-        jenis: body.jenis.trim().slice(0, 100),
-        bab: body.bab?.trim() ? body.bab.trim().slice(0, 200) : null,
-        nilai,
-        catatan: body.catatan?.trim() ? body.catatan.trim().slice(0, 300) : null,
-      },
-      include: ujianInclude,
+    const created = await db.$transaction(async (tx) => {
+      const ujian = await tx.ujian.create({
+        data: {
+          musyrifId,
+          siswaId: siswa.id,
+          tanggal: body.tanggal,
+          jenis: body.jenis.trim().slice(0, 100),
+          bab: body.bab?.trim() ? body.bab.trim().slice(0, 200) : null,
+          nilai: rata,
+          catatan: body.catatan?.trim() ? body.catatan.trim().slice(0, 300) : null,
+        },
+        include: ujianInclude,
+      })
+      await tx.nilaiTp.createMany({
+        data: [...nilaiPerTp.entries()].map(([tpId, nilai]) => ({ ujianId: ujian.id, tpId, nilai })),
+      })
+      return ujian
     })
 
     return NextResponse.json({ ujian: mapUjian(created) }, { status: 201 })
